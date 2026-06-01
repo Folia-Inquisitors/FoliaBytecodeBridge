@@ -1,6 +1,6 @@
 # FoliaBytecodeBridge
 
-Experimental Bukkit/Folia plugin plus Java agent that rewrites common legacy Bukkit bytecode shapes into Folia ownership routes.
+Experimental Bukkit/Folia plugin that rewrites common Bukkit bytecode shapes into Folia ownership routes.
 
 ## Building instructions
 
