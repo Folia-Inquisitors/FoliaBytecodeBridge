@@ -73,6 +73,7 @@ final class RawLegacyMainThreadTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawLegacyMainThreadTransformed(className, loader, evidence.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {

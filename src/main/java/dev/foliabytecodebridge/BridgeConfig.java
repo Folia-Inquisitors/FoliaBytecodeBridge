@@ -22,6 +22,10 @@ final class BridgeConfig {
             debugFile=true
             debugFileVerbose=true
             debugFilePath=plugins/FoliaBytecodeBridge/debug.log
+            # Refresh debug.log when it reaches this size by rotating the old
+            # file to debug-<timestamp>.log and starting a fresh debug.log.
+            # Set to 0 to disable rotation. 5368709120 = 5 GiB.
+            debugFileMaxBytes=5368709120
             consoleVerbose=false
 
             debug=false
@@ -99,6 +103,10 @@ final class BridgeConfig {
 
     static String debugFilePath() {
         return string("debugFilePath", "plugins/FoliaBytecodeBridge/debug.log");
+    }
+
+    static long debugFileMaxBytes() {
+        return decimal("debugFileMaxBytes", 5_368_709_120L);
     }
 
     static boolean consoleVerbose() {
@@ -180,6 +188,18 @@ final class BridgeConfig {
         if (value == null || value.isBlank()) return defaultValue;
         try {
             return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static long decimal(String key, long defaultValue) {
+        load();
+        String value = System.getProperty(PREFIX + key);
+        if (value == null) value = FILE_PROPERTIES.getProperty(key);
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Long.parseLong(value.trim());
         } catch (NumberFormatException ignored) {
             return defaultValue;
         }

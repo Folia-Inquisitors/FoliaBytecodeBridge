@@ -6,8 +6,10 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
@@ -22,6 +24,8 @@ final class DebugFileSink {
     private static final String JVM_LOCK_KEY = "dev.foliabytecodebridge.debugFileLock";
     private static final int WRITE_ATTEMPTS = 5;
     private static final long RETRY_DELAY_MILLIS = 25L;
+    private static final DateTimeFormatter ARCHIVE_TIMESTAMP =
+            DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSSxx");
     private static final AtomicBoolean HEADER_WRITTEN = new AtomicBoolean();
     private static final AtomicBoolean WRITE_WARNING_PRINTED = new AtomicBoolean();
 
@@ -38,11 +42,11 @@ final class DebugFileSink {
                 if (parent != null) {
                     Files.createDirectories(parent);
                 }
+                rotateIfNeeded(path);
                 if (HEADER_WRITTEN.compareAndSet(false, true)) {
-                    append(path, "==== FoliaBytecodeBridge debug session "
-                            + OffsetDateTime.now() + " ====");
+                    append(path, sessionHeader());
                 }
-                append(path, "[" + level.getName() + "] " + sanitized);
+                append(path, OffsetDateTime.now() + " [" + level.getName() + "] " + sanitized);
                 if (throwable != null) {
                     append(path, PrivacySanitizer.text(stackTrace(throwable)));
                 }
@@ -54,6 +58,39 @@ final class DebugFileSink {
                 }
             }
         }
+    }
+
+    private static String sessionHeader() {
+        return "==== FoliaBytecodeBridge debug session "
+                + OffsetDateTime.now()
+                + " version=" + BridgeBuildInfo.VERSION
+                + " buildId=" + BridgeBuildInfo.BUILD_ID
+                + " routeRules=" + RouteRuleRegistry.rules().size()
+                + " ====";
+    }
+
+    private static void rotateIfNeeded(Path path) throws IOException {
+        long maxBytes = BridgeConfig.debugFileMaxBytes();
+        if (maxBytes <= 0L || !Files.isRegularFile(path) || Files.size(path) < maxBytes) return;
+
+        Path archive = archivePath(path);
+        Files.move(path, archive, StandardCopyOption.REPLACE_EXISTING);
+        HEADER_WRITTEN.set(false);
+    }
+
+    private static Path archivePath(Path path) {
+        Path fileName = path.getFileName();
+        String name = fileName == null ? "debug.log" : fileName.toString();
+        String timestamp = OffsetDateTime.now().format(ARCHIVE_TIMESTAMP);
+        int dot = name.lastIndexOf('.');
+        String archivedName;
+        if (dot <= 0) {
+            archivedName = name + "-" + timestamp;
+        } else {
+            archivedName = name.substring(0, dot) + "-" + timestamp + name.substring(dot);
+        }
+        Path parent = path.getParent();
+        return parent == null ? Path.of(archivedName) : parent.resolve(archivedName);
     }
 
     private static Object jvmLock() {

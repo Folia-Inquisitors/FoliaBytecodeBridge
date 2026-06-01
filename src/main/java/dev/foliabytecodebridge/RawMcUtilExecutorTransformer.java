@@ -78,6 +78,7 @@ final class RawMcUtilExecutorTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawMcUtilExecutorTransformed(className, loader, replacements.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {

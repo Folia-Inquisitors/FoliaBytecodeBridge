@@ -72,6 +72,7 @@ final class RawNmsServerExecutorTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawNmsServerExecutorTransformed(className, loader, replacements.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {

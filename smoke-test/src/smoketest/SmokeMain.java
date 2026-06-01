@@ -236,10 +236,7 @@ public final class SmokeMain {
                 "model=split-by-loaded-chunks");
         logs.requireContains("[FBB unsafe-call]", "api=World#getEntities",
                 "route=G_WORLD_SCAN_SPLIT", "next=split-scan-by-loaded-chunks",
-                "policy=preemptive-safe", "reason=proven-live-route");
-        logs.requireContains("[FBB unsafe-call]", "api=World#getEntities",
-                "route=G_WORLD_SCAN_SPLIT", "next=split-scan-by-loaded-chunks",
-                "fallback=preemptive-split-scan", "reason=proven-live-route");
+                "policy=direct-non-folia");
         logs.requireContains("[FBB unsafe-call]", "api=World#getLoadedChunks",
                 "route=G_WORLD_SCAN_SPLIT", "next=world-loaded-chunk-index",
                 "model=loaded-chunk-index");
@@ -248,43 +245,30 @@ public final class SmokeMain {
                 "model=split-by-loaded-chunks");
         logs.requireContains("[FBB unsafe-call]", "api=World#getNearbyEntities(Location,double,double,double)",
                 "route=G_WORLD_SCAN_SPLIT", "next=region-scheduler-by-location-bounded-scan",
-                "policy=preemptive-safe", "reason=proven-live-route");
-        logs.requireContains("[FBB unsafe-call]", "api=World#getNearbyEntities(Location,double,double,double)",
-                "route=G_WORLD_SCAN_SPLIT", "next=region-scheduler-by-location-bounded-scan",
-                "fallback=preemptive-bounded-split-scan");
+                "policy=direct-non-folia");
         logs.requireContains("[FBB unsafe-call]", "api=ScoreboardManager#getNewScoreboard",
                 "route=D_PLAYER_UI", "next=scoreboard-detached-model-create",
-                "policy=shim-model", "result=detached-scoreboard");
+                "policy=direct-non-folia");
         logs.requireContains("[FBB unsafe-call]", "api=Scoreboard#registerNewTeam(String)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-team-create",
-                "policy=shim-model", "result=team");
+                "route=D_PLAYER_UI", "next=scoreboard-hard-unsupported-team-create");
         logs.requireContains("[FBB unsafe-call]", "api=Scoreboard#registerNewObjective(String,String,String)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-objective-create",
-                "policy=shim-model", "result=objective");
+                "route=D_PLAYER_UI", "next=scoreboard-hard-unsupported-objective-create");
         logs.requireContains("[FBB unsafe-call]", "api=Objective#setDisplaySlot(DisplaySlot)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-objective-mutation",
-                "policy=shim-model", "result=display-slot-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-objective-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Objective#getScore(String)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-score-read",
-                "policy=shim-model", "result=score");
+                "route=D_PLAYER_UI", "next=scoreboard-model-score-read");
         logs.requireContains("[FBB unsafe-call]", "api=Score#setScore(int)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-score-mutation",
-                "policy=shim-model", "result=score-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-score-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Team#setPrefix(String)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation",
-                "policy=shim-model", "result=prefix-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Team#setSuffix(String)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation",
-                "policy=shim-model", "result=suffix-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Team#setColor(ChatColor)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation",
-                "policy=shim-model", "result=color-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-team-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Objective#displayName(Component)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-objective-mutation",
-                "policy=shim-model", "result=display-name-component-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-objective-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Score#customName(Component)",
-                "route=D_PLAYER_UI", "next=scoreboard-model-score-mutation",
-                "policy=shim-model", "result=custom-name-set");
+                "route=D_PLAYER_UI", "next=scoreboard-model-score-mutation");
         logs.requireContains("[FBB transform]", "class=smoketest.SmokeTarget",
                 "path=raw-command-dispatch", "result=patched", "replacements=2");
 
@@ -505,7 +489,30 @@ public final class SmokeMain {
     private static ScoreboardManager fakeScoreboardManager() {
         return (ScoreboardManager) Proxy.newProxyInstance(SmokeMain.class.getClassLoader(),
                 new Class<?>[]{ScoreboardManager.class},
-                (proxy, method, args) -> null);
+                (proxy, method, args) -> {
+                    if ("getNewScoreboard".equals(method.getName())) {
+                        return proxy(org.bukkit.scoreboard.Scoreboard.class, SmokeMain::scoreboardHandler);
+                    }
+                    return defaultValue(method.getReturnType());
+                });
+    }
+
+    private static Object scoreboardHandler(Object proxy, Method method, Object[] args) {
+        if ("registerNewTeam".equals(method.getName())) {
+            return proxy(org.bukkit.scoreboard.Team.class,
+                    (teamProxy, teamMethod, teamArgs) -> defaultValue(teamMethod.getReturnType()));
+        }
+        if ("registerNewObjective".equals(method.getName())) {
+            return proxy(org.bukkit.scoreboard.Objective.class,
+                    (objectiveProxy, objectiveMethod, objectiveArgs) -> {
+                        if ("getScore".equals(objectiveMethod.getName())) {
+                            return proxy(org.bukkit.scoreboard.Score.class,
+                                    (scoreProxy, scoreMethod, scoreArgs) -> defaultValue(scoreMethod.getReturnType()));
+                        }
+                        return defaultValue(objectiveMethod.getReturnType());
+                    });
+        }
+        return defaultValue(method.getReturnType());
     }
 
     private static Player fakePlayer(World world) {

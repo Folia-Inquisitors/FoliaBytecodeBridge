@@ -59,6 +59,7 @@ final class RawServerCommandTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawCommandTransformed(className, loader, replacements.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {

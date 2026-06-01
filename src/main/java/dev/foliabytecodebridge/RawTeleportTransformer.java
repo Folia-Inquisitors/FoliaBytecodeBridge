@@ -86,6 +86,7 @@ final class RawTeleportTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawTeleportTransformed(className, loader, replacements.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {

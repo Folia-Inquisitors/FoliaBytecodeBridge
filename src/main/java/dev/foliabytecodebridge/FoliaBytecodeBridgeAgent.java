@@ -34,11 +34,14 @@ import java.lang.instrument.Instrumentation;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLClassLoader;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 import java.util.concurrent.Callable;
@@ -78,6 +81,7 @@ public final class FoliaBytecodeBridgeAgent {
     public static synchronized void install(Instrumentation instrumentation, String mode) {
         if (installed) return;
         try {
+            openJavaNetForRuntimeVisibility(instrumentation);
             appendServerLibraries(instrumentation);
             ClassFileLocator serverFallbackLocator = serverFallbackLocator();
             if (BridgeConfig.metadataOverlayAll()) {
@@ -190,6 +194,7 @@ public final class FoliaBytecodeBridgeAgent {
                     TypedRouteCandidateReporter.inspect(
                             TypedRouteCandidateReporter.TypeName.of(typeDescription.getName()), classLoader);
             BridgeDiagnostics.typedRouteCandidateScan(typeDescription.getName(), classLoader, candidateReport);
+            BridgeRuntimeVisibility.ensureBridgeVisible(classLoader, typeDescription.getName());
 
             // Keep substitutions grouped by source API so the matrix in docs/TRANSFORM_MATRIX.md stays easy to audit.
             return builder
@@ -205,6 +210,23 @@ public final class FoliaBytecodeBridgeAgent {
         return canLoad("org.bukkit.plugin.Plugin", FoliaBytecodeBridgeAgent.class.getClassLoader())
                 && canLoad("org.bukkit.scheduler.BukkitScheduler", FoliaBytecodeBridgeAgent.class.getClassLoader())
                 && canLoad("org.bukkit.entity.Player", FoliaBytecodeBridgeAgent.class.getClassLoader());
+    }
+
+    private static void openJavaNetForRuntimeVisibility(Instrumentation instrumentation) {
+        try {
+            Module javaBase = URLClassLoader.class.getModule();
+            Module bridgeModule = FoliaBytecodeBridgeAgent.class.getModule();
+            instrumentation.redefineModule(javaBase,
+                    Set.of(),
+                    Map.of(),
+                    Map.of("java.net", Set.of(bridgeModule)),
+                    Set.of(),
+                    Map.of());
+            BridgeDiagnostics.agentClasspath("runtime-visibility java.base/java.net opened-to-bridge-module");
+        } catch (Throwable throwable) {
+            BridgeDiagnostics.attachWarning("runtime-visibility result=module-open-failed throwable="
+                    + throwable.getClass().getName() + ": " + throwable.getMessage());
+        }
     }
 
     private static ClassFileLocator serverFallbackLocator() {

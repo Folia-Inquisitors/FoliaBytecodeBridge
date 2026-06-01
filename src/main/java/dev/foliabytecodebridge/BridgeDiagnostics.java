@@ -317,6 +317,26 @@ final class BridgeDiagnostics {
                 + throwable.getMessage(), throwable);
     }
 
+    static void helperVisibility(String className, ClassLoader classLoader, String result, String action) {
+        info("[FBB helper-visibility] class=" + className.replace('/', '.')
+                + " loader=" + loaderName(classLoader)
+                + " helper=UnsafeCallBridge"
+                + " result=" + result
+                + " action=" + action
+                + " note=rewritten-plugin-bytecode-must-resolve-bridge-runtime");
+    }
+
+    static void helperVisibilityFailure(String className, ClassLoader classLoader, Throwable throwable) {
+        log(Level.WARNING, "[FBB helper-visibility] class=" + className.replace('/', '.')
+                + " loader=" + loaderName(classLoader)
+                + " helper=UnsafeCallBridge"
+                + " result=failed"
+                + " action=paper-library-loader-add-url"
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + throwable.getMessage()
+                + " note=rewritten-callsite-may-fail-with-NoClassDefFoundError", throwable);
+    }
+
     static void compatibilityFailure(Throwable throwable) {
         if (throwable == null) return;
         NmsCompatModel.fromThrowable(throwable).ifPresent(report -> {
@@ -648,4 +668,3 @@ final class BridgeDiagnostics {
     }
 
 }
-

@@ -15,6 +15,24 @@ The agent must start before Bukkit plugins load. If it starts after a target plu
 
 The jar is also a Bukkit plugin so the server can load `plugin.yml`, expose logs, and keep the bridge classes available in the plugin environment.
 
+## Runtime Helper Visibility
+
+Rewritten plugin bytecode calls FBB runtime helpers such as
+`UnsafeCallBridge`. Spigot-style plugin classloaders can normally see those
+classes through the plugin environment, but Paper's modern plugin loader can
+isolate plugin classes behind a `PaperPluginClassLoader` and a separate
+library loader.
+
+When a transform is applied, `BridgeRuntimeVisibility` checks whether the target
+plugin loader can resolve the bridge helper. If not, and the loader is Paper's
+modern plugin loader, FBB adds its own jar to that plugin library loader. This
+is infrastructure for rewritten callsites, not a route-family rewrite and not a
+plugin-specific patch.
+
+The adapter emits `[FBB helper-visibility]` diagnostics so a failed visibility
+path is visible before it turns into `NoClassDefFoundError` inside a rewritten
+plugin class.
+
 ## Transform Scope
 
 The transformer rewrites known Bukkit scheduler API calls:

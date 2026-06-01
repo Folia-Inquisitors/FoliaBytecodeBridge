@@ -89,6 +89,7 @@ For an unmodified `run.bat`, use a config file instead:
 debugFile=true
 debugFileVerbose=true
 debugFilePath=plugins/FoliaBytecodeBridge/debug.log
+debugFileMaxBytes=5368709120
 consoleVerbose=false
 modelReports=true
 metadataOverlay=all
@@ -110,6 +111,7 @@ repeatDiagnosticEvery=100
 | `foliabytecodebridge.debugFile` | `true` | Writes full-fidelity bridge/probe diagnostics to `plugins/FoliaBytecodeBridge/debug.log` before console filtering. This is the noisy research log. |
 | `foliabytecodebridge.debugFileVerbose` | `true` | Enables the noisy transform, bytecode-path, guard-path, scheduler, unsafe-call, and skip traces for the debug file by default. Set false only for a tiny debug file. |
 | `foliabytecodebridge.debugFilePath` | `plugins/FoliaBytecodeBridge/debug.log` | Overrides the debug-file location. Keep this local; it may contain plugin stack details even when paths are redacted. |
+| `foliabytecodebridge.debugFileMaxBytes` | `5368709120` | Refreshes `debug.log` at this size by rotating the old file to `debug-<timestamp>.log` and starting a fresh `debug.log`. Set `0` to disable rotation. `5368709120` is 5 GiB. |
 | `foliabytecodebridge.consoleVerbose` | `false` | Prints full diagnostic detail to console. Leave false for readable live runs; the debug file still receives the full stream. |
 | `foliabytecodebridge.modelSummaryIntervalSeconds` | `30` | Emits a fresh `[FBB model-summary]` at least this often while new evidence is still arriving. Set `0` to keep only first/size-threshold summaries. |
 | `foliabytecodebridge.repeatDiagnosticFirstLines` | `3` | Full `[FBB scheduler]` and `[FBB unsafe-call]` lines to print for each repeated hot path before summaries begin. Failures are not throttled. |
@@ -128,6 +130,11 @@ it on first config load. The generated file uses the experimental test-server
 defaults: full diagnostics go to `debug.log`, console remains summarized, and
 `metadataOverlay=all` is enabled so legacy plugins can reach the transformer.
 JVM `-Dfoliabytecodebridge.*` properties still override the regenerated file.
+
+Debug files are session-stamped. Each new file starts with a header containing
+the session time, FBB version, build id, and route-rule count. Individual debug
+entries are also timestamped so old evidence can be separated from current live
+failures without cross-checking `latest.log`.
 
 ## Attach Logs
 
@@ -164,6 +171,27 @@ Shape:
 ```
 
 Use these lines to confirm the target plugin class was actually touched by the Java agent. If a plugin class never appears here, it may have loaded before the agent or may not contain a supported scheduler call shape.
+
+## Helper Visibility Logs
+
+Rewritten plugin bytecode must be able to resolve FBB runtime helpers such as
+`UnsafeCallBridge`. Paper's modern plugin loader can isolate Paper plugin
+classes from the Bukkit plugin classloader that loaded FBB itself, so a
+successful transform can still fail later with `NoClassDefFoundError` if the
+helper is not visible.
+
+FBB checks this when a class is rewritten:
+
+```text
+[FBB helper-visibility] class=<plugin class> loader=<classloader> helper=UnsafeCallBridge result=<already-visible|patched-visible|patched-still-missing|not-visible|failed> action=<...> note=rewritten-plugin-bytecode-must-resolve-bridge-runtime
+```
+
+`patched-visible` means FBB added its own jar to Paper's plugin library loader
+and verified that the helper can now be resolved. `patched-still-missing` or
+`failed` means the transform evidence should be kept, but that rewritten
+callsite may still fail at runtime because the plugin loader cannot see the
+bridge helper. This is not a route-family decision; it is loader compatibility
+evidence for rewritten bytecode.
 
 On a real Paperclip/Folia server, debug mode also reports:
 

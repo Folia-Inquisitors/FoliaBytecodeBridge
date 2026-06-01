@@ -147,6 +147,7 @@ final class RawDirectUnsafeTransformer implements ClassFileTransformer {
             }, 0);
 
             if (!changed.get()) return null;
+            BridgeRuntimeVisibility.ensureBridgeVisible(loader, className);
             BridgeDiagnostics.rawDirectUnsafeTransformed(className, loader, replacements.get());
             return writer.toByteArray();
         } catch (Throwable throwable) {
