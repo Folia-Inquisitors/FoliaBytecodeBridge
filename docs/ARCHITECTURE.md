@@ -1,0 +1,91 @@
+# Architecture Notes
+
+FoliaBytecodeBridge has two separate responsibilities:
+
+- `FoliaBytecodeBridgeAgent` installs a Java instrumentation transformer and rewrites selected bytecode call sites.
+- `SchedulerBridge` is the runtime target for those rewritten calls.
+- `UnsafeCallBridge` is a diagnostic-only target for selected direct Bukkit calls.
+- `RouteFamily` is the central architecture map for every emitted `route=<...>` label.
+
+The plugin class only reports whether the agent is installed. It is not responsible for transforming classes. The intended startup path is always `-javaagent:plugins/FoliaBytecodeBridge.jar`.
+
+## Load Order
+
+The agent must start before Bukkit plugins load. If it starts after a target plugin has already loaded, that plugin's scheduler call sites may already be missed.
+
+The jar is also a Bukkit plugin so the server can load `plugin.yml`, expose logs, and keep the bridge classes available in the plugin environment.
+
+## Transform Scope
+
+The transformer rewrites known Bukkit scheduler API calls:
+
+- `BukkitScheduler` sync, async, delayed, repeating, cancellation, and `callSyncMethod`
+- `BukkitRunnable` sync, async, delayed, repeating, cancellation, and cancellation checks
+
+It intentionally does not safety-translate:
+
+- arbitrary executor or thread calls
+- plugin-specific scheduler wrappers unless they eventually call Bukkit scheduler methods
+
+Selected direct `Player`, `Entity`, `World`, and `Block` calls are probed for logs, but the wrappers still pass through to the original Bukkit API.
+
+## Runtime Policy
+
+On Folia:
+
+- Legacy sync tasks are sent to the global region scheduler.
+- Legacy async tasks are sent to the async scheduler.
+- Bukkit tick delays are preserved for global tasks.
+- Async delays are converted from ticks to milliseconds.
+
+On non-Folia servers, the bridge calls the original Bukkit scheduler method and tries to be invisible.
+
+## Route-Family Architecture Map
+
+All route labels come from `RouteFamily`:
+
+| Route | Translation category |
+| --- | --- |
+| `S_GLOBAL` | scheduler/global fallback |
+| `S_ASYNC` | async scheduler |
+| `A_ENTITY` | entity/player calls |
+| `B_REGION_LOCATION` | world calls with location |
+| `C_REGION_BLOCK` | block-owned calls |
+| `D_PLAYER_UI` | inventory/menu/player UI |
+| `F_PLAYER_VISIBILITY` | hide/show player |
+| `G_WORLD_SCAN_SPLIT` | world/entity scans |
+
+When a new bytecode shape is discovered, first map it to one of these families.
+Only add a new family when the smoke evidence shows an operation cannot be
+honestly grouped into the existing architecture.
+
+## Task Handles
+
+Folia scheduler methods do not return Bukkit task ids. `BridgeBukkitTask` wraps Folia scheduled task handles and provides synthetic ids starting at `1_000_000`.
+
+This supports common legacy patterns:
+
+- `BukkitTask#getTaskId()`
+- `BukkitTask#cancel()`
+- `BukkitScheduler#cancelTask(id)`
+- `BukkitScheduler#cancelTasks(plugin)`
+
+## Main Risk
+
+The global region scheduler is not equivalent to Paper's old main thread. It is only safe for global-region work. A plugin task that touches a player, entity, chunk, block, or world data from the wrong region can still break on Folia.
+
+This project is a compatibility experiment, not a formal proof of Folia safety.
+
+## Extension Points
+
+Add new rewrites in `FoliaBytecodeBridgeAgent` only when the bytecode shape is stable and the runtime behavior can be represented by a method in `SchedulerBridge`.
+
+Keep runtime behavior in `SchedulerBridge`. Do not put scheduling policy in the agent; the agent should only substitute calls.
+
+When adding a rewrite:
+
+1. Add the `MemberSubstitution` entry.
+2. Add the exact replacement method signature to `SchedulerBridge`.
+3. Document the call in `README.md`.
+4. Map diagnostics through `RouteFamily` and add a smoke assertion for the emitted route label.
+5. Add a note here if the rewrite has unusual behavior.

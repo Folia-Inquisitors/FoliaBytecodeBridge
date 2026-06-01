@@ -1,0 +1,33 @@
+# Build output
+target/
+/META-INF/
+*.class
+
+# Local server/runtime state
+plugins/
+debug-server/
+logs/
+world/
+world_nether/
+world_the_end/
+cache/
+libraries/
+versions/
+
+# Generated artifacts
+*.jar
+*.log
+*.args
+*.tmp
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local environment overrides
+*.local
+*.local.properties
+config.local.properties

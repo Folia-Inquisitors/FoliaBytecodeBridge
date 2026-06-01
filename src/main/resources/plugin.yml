@@ -1,0 +1,12 @@
+name: FoliaBytecodeBridge
+main: dev.foliabytecodebridge.FoliaBytecodeBridgePlugin
+version: 0.1.1-experimental.3
+api-version: '1.21'
+author: FoliaBytecodeBridge contributors
+description: Experimental bytecode bridge that rewrites legacy Bukkit scheduler calls to Folia-safe schedulers.
+load: STARTUP
+folia-supported: true
+loadbefore:
+  - SuperVanish
+  - FastAsyncWorldEdit
+  - WorldEdit

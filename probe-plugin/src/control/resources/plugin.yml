@@ -1,0 +1,16 @@
+name: FBBProbeControl
+main: dev.foliabytecodebridge.probecontrol.FbbProbeControlPlugin
+version: 0.1.1-experimental.3
+api-version: '1.21'
+author: FoliaBytecodeBridge contributors
+description: Untransformed control probe for FoliaBytecodeBridge route-family testing.
+folia-supported: true
+commands:
+  fbbprobecontrol:
+    description: Runs one raw Folia control probe mode without bridge bytecode translation.
+    usage: /fbbprobecontrol <startup|safe|scan|ui|visibility|entity|world|chunk|server|scoreboard|recovery|paper|all|destructive|help|context|matrix>
+    permission: fbbprobecontrol.run
+permissions:
+  fbbprobecontrol.run:
+    description: Allows running raw FoliaBytecodeBridge control probes.
+    default: op

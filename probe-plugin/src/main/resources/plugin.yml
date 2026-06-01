@@ -1,0 +1,16 @@
+name: FBBProbe
+main: dev.fbbprobe.FbbProbePlugin
+version: 0.1.1-experimental.3
+api-version: '1.21'
+author: FoliaBytecodeBridge contributors
+description: Controlled live-server probe target for FoliaBytecodeBridge route-family testing.
+folia-supported: true
+commands:
+  fbbprobe:
+    description: Runs one controlled FoliaBytecodeBridge route-family probe mode.
+    usage: /fbbprobe <startup|safe|scan|ui|visibility|entity|world|chunk|server|scoreboard|recovery|paper|all|destructive|help|context|matrix>
+    permission: fbbprobe.run
+permissions:
+  fbbprobe.run:
+    description: Allows running FoliaBytecodeBridge live probes.
+    default: op
