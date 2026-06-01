@@ -184,7 +184,7 @@ public final class FbbProbeActions implements ProbeActions {
         Location location = player.getLocation();
         World world = player.getWorld();
 
-        // FoliaLib-style adapters usually route broad scans carefully instead of pretending a whole world
+        // Folia-aware adapters usually route broad scans carefully instead of pretending a whole world
         // belongs to one thread. These probes keep scan evidence separate from simple current-region reads.
         runtime.probe("G_WORLD_SCAN_SPLIT", "World#getEntities", "org.bukkit.World", "getEntities",
                 "()Ljava/util/List;", () -> world.getEntities());

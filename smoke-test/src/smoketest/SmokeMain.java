@@ -83,17 +83,17 @@ public final class SmokeMain {
         runTaskFailureProbe(plugin);
         Path[] pluginJars = pluginJars();
         BytecodeInventorySmoke.Result inventory = BytecodeInventorySmoke.scan(pluginJars);
-        int rawInheritedOwnerHits = RawSchedulerTransformerSmoke.assertPlayerKitsInheritedBukkitRunnableAsync(pluginJars);
-        int rawAnonymousOverrideHits = RawSchedulerTransformerSmoke.assertPlayerKitsAnonymousRunnableOverride(pluginJars);
+        int rawInheritedOwnerHits = RawSchedulerTransformerSmoke.assertInheritedBukkitRunnableAsync(pluginJars);
+        int rawAnonymousOverrideHits = RawSchedulerTransformerSmoke.assertAnonymousRunnableOverride(pluginJars);
         int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertEssentialsHelperNotMisclassified(pluginJars);
-        int rawFaweAsyncRepeatingHits = RawSchedulerTransformerSmoke.assertFaweLegacyAsyncRepeatingScheduler(pluginJars);
+        int rawLegacyAsyncRepeatingHits = RawSchedulerTransformerSmoke.assertLegacyAsyncRepeatingScheduler(pluginJars);
         int rawCommandDispatchHits = RawServerCommandTransformerSmoke.assertSmokeTargetCommandDispatch();
         InstructionRouteScanner.RouteReport routeReport = runInstructionRouteScannerSmoke();
         int routeRuleCount = assertGeneratedRouteRuleRegistrySmoke();
         String nmsCompatEvidence = runNmsCompatModelSmoke();
         String memberMapEvidence = runServerMemberMapSmoke();
         String nmsSyntheticMemberEvidence = NmsSyntheticMemberTransformerSmoke.assertMinecraftServerCurrentTickShim();
-        String legacyMainThreadEvidence = RawLegacyMainThreadTransformerSmoke.assertFaweMainThreadFallback();
+        String legacyMainThreadEvidence = RawLegacyMainThreadTransformerSmoke.assertLegacyMainThreadFallback();
         String mcUtilExecutorEvidence = RawMcUtilExecutorTransformerSmoke.assertMcUtilMainExecutorRewrite();
         String nmsServerExecutorEvidence = RawNmsServerExecutorTransformerSmoke.assertMinecraftServerExecuteRewrite();
         RepeatDiagnosticsSmoke.emitRepeatSummaryEvidence();
@@ -228,7 +228,7 @@ public final class SmokeMain {
         logs.requireContains("[FBB guard-path]", "owner=org.bukkit.World", "name=getEntities",
                 "descriptor=()Ljava/util/List;", "route=G_WORLD_SCAN_SPLIT", "action=rewritten",
                 "invokedynamic method reference handle routed through bridge");
-        logs.requireContains("[FBB legacy-main-thread]", "owner=com.fastasyncworldedit.core.Fawe",
+        logs.requireContains("[FBB legacy-main-thread]",
                 "name=isMainThread", "descriptor=()Z", "route=S_GLOBAL",
                 "rule=exact-owner-method-body", "action=rewritten");
         logs.requireContains("[FBB unsafe-call]", "api=World#getEntities",
@@ -302,7 +302,7 @@ public final class SmokeMain {
                 + " rawInheritedOwnerHits=" + rawInheritedOwnerHits
                 + " rawAnonymousOverrideHits=" + rawAnonymousOverrideHits
                 + " rawWrapperGuardHits=" + rawWrapperGuardHits
-                + " rawFaweAsyncRepeatingHits=" + rawFaweAsyncRepeatingHits
+                + " rawLegacyAsyncRepeatingHits=" + rawLegacyAsyncRepeatingHits
                 + " rawCommandDispatchHits=" + rawCommandDispatchHits
                 + " asmRouteHits=" + routeReport.hits().size()
                 + " routeRules=" + routeRuleCount
@@ -339,7 +339,7 @@ public final class SmokeMain {
         List<String> lines = List.of(
                 "[Server thread/ERROR]: Error occurred while enabling WorldGuard v7.0.16+2355-f7fded2 (Is it up to date?)",
                 "java.lang.NoSuchFieldError: Class net.minecraft.server.MinecraftServer does not have member field 'int currentTick'",
-                "\tat FastAsyncWorldEdit-Paper-2.15.1.jar//com.sk89q.worldedit.bukkit.adapter.impl.fawe.v26_1.PaperweightFaweWorldNativeAccess.<init>(PaperweightFaweWorldNativeAccess.java:65) ~[?:?]"
+                "\tat world-editing-plugin-reference.jar//com.example.serveradapter.NativeWorldAccess.<init>(NativeWorldAccess.java:65) ~[?:?]"
         );
         List<NmsCompatModel.Report> reports = NmsCompatModel.fromLogLines(lines);
         if (reports.size() != 1) {
@@ -351,8 +351,8 @@ public final class SmokeMain {
         requireFragment(evidence, "owner=net.minecraft.server.MinecraftServer");
         requireFragment(evidence, "name=currentTick");
         requireFragment(evidence, "descriptor=I");
-        requireFragment(evidence, "pluginJar=FastAsyncWorldEdit-Paper-2.15.1.jar");
-        requireFragment(evidence, "caller=com.sk89q.worldedit.bukkit.adapter.impl.fawe.v26_1.PaperweightFaweWorldNativeAccess#<init>");
+        requireFragment(evidence, "pluginJar=world-editing-plugin-reference.jar");
+        requireFragment(evidence, "caller=com.example.serveradapter.NativeWorldAccess#<init>");
         return "1";
     }
 

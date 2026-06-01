@@ -1,6 +1,6 @@
-# PlayerKits2 Audit
+# kit plugin reference Audit
 
-Source reviewed from `PlayerKits2-main.zip`.
+Source reviewed from `kit-plugin-reference.zip`.
 
 ## Build Check
 
@@ -10,12 +10,12 @@ Source reviewed from `PlayerKits2-main.zip`.
 | --- | --- |
 | Maven runtime | portable Maven 3.9.9 under `tools/apache-maven-3.9.9` |
 | POM adjustment | `me.clip:placeholderapi` changed from unavailable `2.11.1` to available `2.11.6` |
-| Output jar | `PlayerKits2-main/PlayerKits2-main/target/PlayerKits2-1.22.1.jar` |
+| Output jar | `kit plugin reference-main/kit plugin reference-main/target/kit-plugin-reference.jar` |
 | Remaining notes | compile emits deprecation/removal warnings for older Bukkit potion, enchantment, trim, and attribute APIs |
 
 ## Scheduler Shapes
 
-PlayerKits2 uses Bukkit scheduler APIs directly through `BukkitRunnable` and `Bukkit.getScheduler()` patterns already covered by the bridge:
+kit plugin reference uses Bukkit scheduler APIs directly through `BukkitRunnable` and `Bukkit.getScheduler()` patterns already covered by the bridge:
 
 | Area | Observed shape | Bridge status |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ PlayerKits2 uses Bukkit scheduler APIs directly through `BukkitRunnable` and `Bu
 
 ## Direct Bukkit Risks
 
-The plugin is GUI-heavy. The bridge now adds diagnostic probes for these PlayerKits2-relevant calls:
+The plugin is GUI-heavy. The bridge now adds diagnostic probes for these kit plugin reference-relevant calls:
 
 | Area | Observed shape | Probe family |
 | --- | --- | --- |
@@ -41,4 +41,4 @@ The plugin is GUI-heavy. The bridge now adds diagnostic probes for these PlayerK
 
 ## Expected Runtime Behavior
 
-The bridge should get PlayerKits2 past legacy Bukkit scheduler failures. It does not make GUI work or item drops intrinsically Folia-safe; those are currently diagnostic probes. If Folia reports a region ownership error, use `[FBB unsafe-call]` and `[FBB unsafe-failure]` lines to identify whether the next translation should target player UI, player audio, or region item drops.
+The bridge should get kit plugin reference past legacy Bukkit scheduler failures. It does not make GUI work or item drops intrinsically Folia-safe; those are currently diagnostic probes. If Folia reports a region ownership error, use `[FBB unsafe-call]` and `[FBB unsafe-failure]` lines to identify whether the next translation should target player UI, player audio, or region item drops.

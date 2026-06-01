@@ -14,32 +14,32 @@ import java.util.jar.JarFile;
 
 public final class RawSchedulerTransformerSmoke {
 
-    private static final String PLAYERKITS_PLAYERS_CONFIG = "pk/ajneb97/configs/PlayersConfigManager";
-    private static final String PLAYERKITS_PLAYERS_CONFIG_TASK = "pk/ajneb97/configs/PlayersConfigManager$1";
+    private static final String KIT_PLUGIN_PLAYERS_CONFIG = "pk/ajneb97/configs/PlayersConfigManager";
+    private static final String KIT_PLUGIN_PLAYERS_CONFIG_TASK = "pk/ajneb97/configs/PlayersConfigManager$1";
     private static final String ESSENTIALS_MAIN = "com/earth2me/essentials/Essentials";
-    private static final String FAWE_TASK_MANAGER = "com/fastasyncworldedit/bukkit/util/BukkitTaskManager";
+    private static final String LEGACY_ASYNC_TASK_MANAGER = "com/fastasyncworldedit/bukkit/util/BukkitTaskManager";
     private static final String BRIDGE = "dev/foliabytecodebridge/ObjectSchedulerBridge";
 
     private RawSchedulerTransformerSmoke() {
     }
 
-    public static int assertPlayerKitsInheritedBukkitRunnableAsync(Path[] pluginJars) {
+    public static int assertInheritedBukkitRunnableAsync(Path[] pluginJars) {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, PLAYERKITS_PLAYERS_CONFIG + ".class");
+            byte[] original = readClass(jar, KIT_PLUGIN_PLAYERS_CONFIG + ".class");
             if (original == null) continue;
 
             byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, PLAYERKITS_PLAYERS_CONFIG, null, null, original);
+                    null, null, KIT_PLUGIN_PLAYERS_CONFIG, null, null, original);
             if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer missed PlayerKits2 "
-                        + "PlayersConfigManager inherited BukkitRunnable#runTaskAsynchronously");
+                throw new IllegalStateException("Raw scheduler transformer missed kit plugin reference "
+                        + "inherited BukkitRunnable#runTaskAsynchronously shape");
             }
 
             MethodHits hits = scan(transformed);
             if (hits.bridgeAsyncRunnableCalls != 1 || hits.legacyAsyncRunnableCalls != 0) {
-                throw new IllegalStateException("Unexpected PlayerKits2 raw transform result: bridge="
+                throw new IllegalStateException("Unexpected anonymous runnable raw transform result: bridge="
                         + hits.bridgeAsyncRunnableCalls + " legacy=" + hits.legacyAsyncRunnableCalls);
             }
             return 1;
@@ -47,23 +47,23 @@ public final class RawSchedulerTransformerSmoke {
         return 0;
     }
 
-    public static int assertPlayerKitsAnonymousRunnableOverride(Path[] pluginJars) {
+    public static int assertAnonymousRunnableOverride(Path[] pluginJars) {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, PLAYERKITS_PLAYERS_CONFIG_TASK + ".class");
+            byte[] original = readClass(jar, KIT_PLUGIN_PLAYERS_CONFIG_TASK + ".class");
             if (original == null) continue;
 
             byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, PLAYERKITS_PLAYERS_CONFIG_TASK, null, null, original);
+                    null, null, KIT_PLUGIN_PLAYERS_CONFIG_TASK, null, null, original);
             if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer did not add PlayerKits2 "
+                throw new IllegalStateException("Raw scheduler transformer did not add kit plugin reference "
                         + "anonymous BukkitRunnable override bridge");
             }
 
             MethodHits hits = scan(transformed);
             if (hits.asyncRunnableOverrideMethods != 1 || hits.bridgeAsyncRunnableCalls < 1) {
-                throw new IllegalStateException("Unexpected PlayerKits2 anonymous override result: overrides="
+                throw new IllegalStateException("Unexpected anonymous runnable override result: overrides="
                         + hits.asyncRunnableOverrideMethods + " bridge=" + hits.bridgeAsyncRunnableCalls);
             }
             return 1;
@@ -97,23 +97,23 @@ public final class RawSchedulerTransformerSmoke {
         return 0;
     }
 
-    public static int assertFaweLegacyAsyncRepeatingScheduler(Path[] pluginJars) {
+    public static int assertLegacyAsyncRepeatingScheduler(Path[] pluginJars) {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, FAWE_TASK_MANAGER + ".class");
+            byte[] original = readClass(jar, LEGACY_ASYNC_TASK_MANAGER + ".class");
             if (original == null) continue;
 
             byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, FAWE_TASK_MANAGER, null, null, original);
+                    null, null, LEGACY_ASYNC_TASK_MANAGER, null, null, original);
             if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer missed FAWE legacy "
+                throw new IllegalStateException("Raw scheduler transformer missed legacy "
                         + "BukkitScheduler#scheduleAsyncRepeatingTask");
             }
 
             MethodHits hits = scan(transformed);
             if (hits.bridgeScheduleAsyncRepeatingCalls != 1 || hits.legacyScheduleAsyncRepeatingCalls != 0) {
-                throw new IllegalStateException("Unexpected FAWE legacy async repeating transform result: bridge="
+                throw new IllegalStateException("Unexpected legacy async repeating transform result: bridge="
                         + hits.bridgeScheduleAsyncRepeatingCalls + " legacy="
                         + hits.legacyScheduleAsyncRepeatingCalls);
             }

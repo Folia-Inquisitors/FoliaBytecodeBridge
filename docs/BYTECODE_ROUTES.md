@@ -55,7 +55,7 @@ This is the important reuse rule:
 | If another plugin calls... | It is covered when bytecode resolves to... |
 | --- | --- |
 | `new BukkitRunnable(){...}.runTaskLater(plugin, 1)` | an inherited `runTaskLater(Plugin,long)` call compatible with `BukkitRunnable` |
-| `new BukkitRunnable(){...}.runTaskAsynchronously(plugin)` where bytecode owner is the anonymous subclass | an inherited `runTaskAsynchronously(Plugin)` call compatible with `BukkitRunnable`; observed in `PlayerKits2` `PlayersConfigManager#loadConfig` |
+| `new BukkitRunnable(){...}.runTaskAsynchronously(plugin)` where bytecode owner is the anonymous subclass | an inherited `runTaskAsynchronously(Plugin)` call compatible with `BukkitRunnable`; observed in `kit plugin reference` `PlayersConfigManager#loadConfig` |
 | `scheduler.runTaskAsynchronously(plugin, task)` | `org/bukkit/scheduler/BukkitScheduler#runTaskAsynchronously(Plugin,Runnable)` |
 | `player.openInventory(inv)` | `org/bukkit/entity/Player#openInventory(Inventory)` or inherited `HumanEntity#openInventory(Inventory)` |
 | `player.getScoreboard()` / `player.setScoreboard(board)` | `org/bukkit/entity/Player#getScoreboard()` / `setScoreboard(Scoreboard)`; classified as player-owned `D_PLAYER_UI` |
@@ -217,11 +217,11 @@ Expected diagnostics:
 `S_GLOBAL` also owns the current `LEGACY_MAIN_THREAD_EXPECTATION` compatibility
 model. This is not a broad rewrite of every `isMainThread()` method. The bridge
 currently has one exact method-body rule for
-`com.fastasyncworldedit.core.Fawe#isMainThread()Z` because live logs proved that
+`com.worldeditingreference.core.LegacyMainThreadOwner#isMainThread()Z` because live logs proved that
 `QueueHandler#run` failed with `IllegalStateException: Not main thread` after
 the task had already been routed through the Folia global scheduler.
 
-The rewrite preserves FAWE's original captured-thread check and then calls
+The rewrite preserves world-editing reference's original captured-thread check and then calls
 `LegacyMainThreadBridge` only when the original predicate would return `false`.
 The fallback accepts Folia tick/region or Bukkit primary-thread contexts and
 keeps async worker threads as `false`. Other static no-arg boolean
@@ -246,7 +246,7 @@ Treat `guard-path` as a pointer, not a fix. Once a path has enough context and a
 safe Folia replacement, add a real rewrite and keep the guard trace as audit
 evidence.
 
-The TAB/BetterBoard/SuperVanish reference audit split scoreboard bytecode into
+The TAB/BetterBoard/visibility plugin reference reference audit split scoreboard bytecode into
 two shapes. Player-owned calls such as `Player#getScoreboard`,
 `Player#setScoreboard`, `Scoreboard#registerNewTeam`, team display/style
 mutations, `Scoreboard#registerNewObjective`, objective display/number-format

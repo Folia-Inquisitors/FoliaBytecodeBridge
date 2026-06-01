@@ -1,14 +1,14 @@
-# SuperVanish Audit Notes
+# visibility plugin reference Audit Notes
 
-Source reference: `<downloads>\SuperVanish-master.zip`
+Source reference: `<downloads>\visibility-plugin-reference.zip`
 
 ## Scheduler Calls Covered By The Bridge
 
-These are the obvious legacy scheduler call sites found in `SuperVanish-master/src/main/java`:
+These are the obvious legacy scheduler call sites found in `visibility plugin reference-master/src/main/java`:
 
 | File | Pattern | Bridge result |
 | --- | --- | --- |
-| `SuperVanish.java` | `getServer().getScheduler().cancelTasks(this)` | synthetic/global/async tasks cancelled for plugin |
+| `visibility plugin reference.java` | `getServer().getScheduler().cancelTasks(this)` | synthetic/global/async tasks cancelled for plugin |
 | `features/Feature.java` | `runTaskLater(plugin, runnable, 1)` | global delayed task |
 | `features/NightVision.java` | `scheduleSyncRepeatingTask(plugin, this, ...)` | global repeating task |
 | `features/NoPush.java` | `BukkitRunnable#runTaskLater` | global delayed task |
@@ -22,7 +22,7 @@ These are the obvious legacy scheduler call sites found in `SuperVanish-master/s
 
 ## Direct Bukkit Actions Still Risky
 
-The bridge can move scheduler calls, but it cannot infer entity ownership for direct API calls. SuperVanish still contains direct player/entity operations such as:
+The bridge can move scheduler calls, but it cannot infer entity ownership for direct API calls. visibility plugin reference still contains direct player/entity operations such as:
 
 - `Player#addPotionEffect` and `Player#removePotionEffect`
 - `Player#setGameMode`, `Player#setVelocity`, `Player#teleport`
@@ -35,7 +35,7 @@ These are usually safe when they happen inside the player's own event callback o
 
 ## Expected Bridge Help
 
-The bridge should get SuperVanish past most legacy scheduler API failures. It is most likely to help:
+The bridge should get visibility plugin reference past most legacy scheduler API failures. It is most likely to help:
 
 - delayed join/recreate messages
 - update-check callbacks
@@ -44,4 +44,4 @@ The bridge should get SuperVanish past most legacy scheduler API failures. It is
 
 ## Remaining Manual Folia Work
 
-For true Folia safety, SuperVanish source should eventually use player/entity schedulers for player-specific actions. The bytecode bridge cannot safely choose the correct player scheduler when a task loops over multiple online players.
+For true Folia safety, visibility plugin reference source should eventually use player/entity schedulers for player-specific actions. The bytecode bridge cannot safely choose the correct player scheduler when a task loops over multiple online players.

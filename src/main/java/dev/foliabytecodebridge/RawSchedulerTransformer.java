@@ -77,7 +77,7 @@ final class RawSchedulerTransformer implements ClassFileTransformer {
                 @Override
                 public void visitEnd() {
                     if (anonymousBukkitRunnableSubclass) {
-                        // Some plugin classes can load before self-attach sees their caller class. PlayerKits2
+                        // Some plugin classes can load before self-attach sees their caller class. Anonymous
                         // exposed this with PlayersConfigManager#loadConfig still invoking
                         // PlayersConfigManager$1#runTaskAsynchronously(Plugin). Adding narrow overrides on the
                         // anonymous BukkitRunnable receiver lets virtual dispatch reach the bridge even when the
@@ -251,7 +251,7 @@ final class RawSchedulerTransformer implements ClassFileTransformer {
         if ("scheduleAsyncDelayedTask".equals(name) && "(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;J)I".equals(descriptor)) {
             return primitive("scheduleAsyncDelayedTaskLater", "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;J)I", schedulerApi(name), RouteFamily.S_ASYNC);
         }
-        // FAWE exposed this legacy int-returning async repeating shape. It belongs to the
+        // Live testing exposed this legacy int-returning async repeating shape. It belongs to the
         // scheduler route family, not to a plugin-specific rule: any plugin using this exact
         // BukkitScheduler descriptor should route through Folia's async scheduler.
         if ("scheduleAsyncRepeatingTask".equals(name) && "(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;JJ)I".equals(descriptor)) {

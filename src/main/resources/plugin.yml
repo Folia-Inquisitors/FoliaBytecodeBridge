@@ -6,7 +6,3 @@ author: FoliaBytecodeBridge contributors
 description: Experimental bytecode bridge that rewrites legacy Bukkit scheduler calls to Folia-safe schedulers.
 load: STARTUP
 folia-supported: true
-loadbefore:
-  - SuperVanish
-  - FastAsyncWorldEdit
-  - WorldEdit

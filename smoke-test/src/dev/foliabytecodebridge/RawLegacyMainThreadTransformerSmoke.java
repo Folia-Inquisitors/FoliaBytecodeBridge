@@ -15,13 +15,13 @@ public final class RawLegacyMainThreadTransformerSmoke {
     private RawLegacyMainThreadTransformerSmoke() {
     }
 
-    public static String assertFaweMainThreadFallback() {
-        byte[] input = fakeFaweClass();
+    public static String assertLegacyMainThreadFallback() {
+        byte[] input = fakeLegacyMainThreadOwnerClass();
         byte[] output = new RawLegacyMainThreadTransformer().transform(null, null,
-                RawLegacyMainThreadTransformer.FAWE_OWNER, null,
+                RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER, null,
                 (ProtectionDomain) null, input);
         if (output == null) {
-            throw new IllegalStateException("Expected FAWE main-thread transform output");
+            throw new IllegalStateException("Expected legacy main-thread transform output");
         }
 
         AtomicBoolean preservedOriginalThreadCheck = new AtomicBoolean(false);
@@ -45,7 +45,7 @@ public final class RawLegacyMainThreadTransformerSmoke {
                     @Override
                     public void visitFieldInsn(int opcode, String owner, String fieldName, String fieldDescriptor) {
                         if (opcode == Opcodes.GETFIELD
-                                && RawLegacyMainThreadTransformer.FAWE_OWNER.equals(owner)
+                                && RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER.equals(owner)
                                 && "thread".equals(fieldName)
                                 && "Ljava/lang/Thread;".equals(fieldDescriptor)) {
                             preservedOriginalThreadCheck.set(true);
@@ -69,31 +69,31 @@ public final class RawLegacyMainThreadTransformerSmoke {
         }, ClassReader.SKIP_FRAMES);
 
         if (!preservedOriginalThreadCheck.get()) {
-            throw new IllegalStateException("FAWE original thread comparison was not preserved");
+            throw new IllegalStateException("legacy original thread comparison was not preserved");
         }
         if (!foundBridgeFallback.get()) {
             throw new IllegalStateException("LegacyMainThreadBridge fallback was not injected");
         }
         new VerifyingLoader().defineAndResolve(output);
-        return "fawe-isMainThread-original-check+folia-fallback";
+        return "legacy-isMainThread-original-check+folia-fallback";
     }
 
     private static final class VerifyingLoader extends ClassLoader {
         Class<?> defineAndResolve(byte[] bytes) {
-            Class<?> type = defineClass(RawLegacyMainThreadTransformer.FAWE_OWNER.replace('/', '.'),
+            Class<?> type = defineClass(RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER.replace('/', '.'),
                     bytes, 0, bytes.length);
             resolveClass(type);
             return type;
         }
     }
 
-    private static byte[] fakeFaweClass() {
+    private static byte[] fakeLegacyMainThreadOwnerClass() {
         ClassWriter writer = new ClassWriter(0);
-        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, RawLegacyMainThreadTransformer.FAWE_OWNER,
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER,
                 null, "java/lang/Object", null);
 
         writer.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "instance",
-                "L" + RawLegacyMainThreadTransformer.FAWE_OWNER + ";", null, null).visitEnd();
+                "L" + RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER + ";", null, null).visitEnd();
         writer.visitField(Opcodes.ACC_PRIVATE, "thread", "Ljava/lang/Thread;", null, null).visitEnd();
 
         MethodVisitor ctor = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
@@ -107,13 +107,13 @@ public final class RawLegacyMainThreadTransformerSmoke {
         MethodVisitor original = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "isMainThread", "()Z", null, null);
         original.visitCode();
-        original.visitFieldInsn(Opcodes.GETSTATIC, RawLegacyMainThreadTransformer.FAWE_OWNER,
-                "instance", "L" + RawLegacyMainThreadTransformer.FAWE_OWNER + ";");
+        original.visitFieldInsn(Opcodes.GETSTATIC, RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER,
+                "instance", "L" + RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER + ";");
         net.bytebuddy.jar.asm.Label trueLabel = new net.bytebuddy.jar.asm.Label();
         original.visitJumpInsn(Opcodes.IFNULL, trueLabel);
-        original.visitFieldInsn(Opcodes.GETSTATIC, RawLegacyMainThreadTransformer.FAWE_OWNER,
-                "instance", "L" + RawLegacyMainThreadTransformer.FAWE_OWNER + ";");
-        original.visitFieldInsn(Opcodes.GETFIELD, RawLegacyMainThreadTransformer.FAWE_OWNER,
+        original.visitFieldInsn(Opcodes.GETSTATIC, RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER,
+                "instance", "L" + RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER + ";");
+        original.visitFieldInsn(Opcodes.GETFIELD, RawLegacyMainThreadTransformer.LEGACY_MAIN_THREAD_OWNER,
                 "thread", "Ljava/lang/Thread;");
         original.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Thread",
                 "currentThread", "()Ljava/lang/Thread;", false);

@@ -50,7 +50,7 @@ SMOKE_OK ... routeRules=56 ... mcUtilExecutorEvidence=mcutil-main-executor-globa
 
 ## 2026-05-31 - MCUtil Main Executor Global Route
 
-The live FAWE `//copy` trace exposed a Paper main-executor assumption:
+The live world-editing reference `//copy` trace exposed a Paper main-executor assumption:
 `MCUtil.MAIN_EXECUTOR#execute(Runnable)` eventually called
 `MinecraftServer#execute(Runnable)`, which Folia rejects. FBB now rewrites the
 specific bytecode shape `GETSTATIC MCUtil.MAIN_EXECUTOR` followed by
@@ -58,7 +58,7 @@ specific bytecode shape `GETSTATIC MCUtil.MAIN_EXECUTOR` followed by
 runnable through Folia's global scheduler and keeps `[FBB scheduler]` /
 `[FBB task-failure]` evidence.
 
-This is a general `S_GLOBAL` server-executor route, not a FAWE command patch.
+This is a general `S_GLOBAL` server-executor route, not a world-editing reference command patch.
 
 ```text
 SMOKE_OK ... mcUtilExecutorEvidence=mcutil-main-executor-global-route
@@ -68,14 +68,14 @@ SMOKE_OK ... mcUtilExecutorEvidence=mcutil-main-executor-global-route
 
 The live server log exposed a `VerifyError` after the
 `raw-legacy-main-thread` transformer rewrote
-`com.fastasyncworldedit.core.Fawe#isMainThread()Z`. The route decision was
+`com.worldeditingreference.core.LegacyMainThreadOwner#isMainThread()Z`. The route decision was
 still correct, but the replaced Java 17 method needed recomputed stack-map
-frames. A whole-class frame recompute also proved unsafe for FAWE because it
+frames. A whole-class frame recompute also proved unsafe for world-editing reference because it
 could widen unrelated locals to `Object`. The transformer now preserves the
 rest of the class frames and emits explicit frames only for the tiny replacement
 method.
 
-Smoke now defines and resolves the transformed fake FAWE class, so invalid
+Smoke now defines and resolves the transformed fake world-editing reference class, so invalid
 stack-map frames fail locally before a server boot:
 
 ```text
@@ -106,7 +106,7 @@ targets until a Folia-owned equivalent and behavior match are proven.
 ## 2026-05-31 - NMS Compatibility Model
 
 `NMS_VERSION_COMPAT` is now modeled as diagnostic evidence for
-server-internal binary shape failures such as FAWE expecting
+server-internal binary shape failures such as world-editing reference expecting
 `MinecraftServer.currentTick` on a Folia jar that does not expose that field.
 This is not an ownership route and does not silence the crash. The evidence
 tool emits `[FBB preflight-nms]` for server-internal member references in plugin
@@ -116,7 +116,7 @@ adapter-research step. FBB also installs a de-duplicated runtime log handler so
 linkage throwables logged after FBB enables get a direct `[FBB compat]`
 breadcrumb in the server console.
 
-Smoke coverage includes a synthetic WorldGuard/FAWE-style stack trace and
+Smoke coverage includes a synthetic WorldGuard/world-editing reference-style stack trace and
 asserts the model produces:
 
 ```text
@@ -127,7 +127,7 @@ asserts the model produces:
 
 The evidence tool now accepts `--server-root <server>` and emits
 `[FBB member-map]` for live compatibility failures. For the current
-FAWE/WorldGuard failure, the map proves the running Folia jar contains
+world-editing reference/WorldGuard failure, the map proves the running Folia jar contains
 `net.minecraft.server.MinecraftServer` but does not contain the expected
 `currentTick:I` field:
 
@@ -143,7 +143,7 @@ with `memberMapEvidence=2`.
 ## 2026-05-31 - Synthetic Current Tick Adapter
 
 Paper's source patch shows `public static int MinecraftServer.currentTick` and
-increments it in the server tick loop. FAWE's v26.1 native access reads that
+increments it in the server tick loop. world-editing reference's v26.1 native access reads that
 field to decide when to flush cached async block changes. Folia 26.1.2 exposes
 region tick data instead, so FBB now adds `currentTick:I` during initial
 `MinecraftServer` class definition and writes `TickRegionData#getCurrentTick()`
@@ -165,7 +165,7 @@ This is a server-internal compatibility adapter, not an `A_ENTITY` /
 ## 2026-05-31 - Foreign Owner Return Models
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
 ```
 
 The live startup probe showed the route family was correct for `Block#getType`
@@ -181,7 +181,7 @@ region call fails.
 ## 2026-05-31 - Entity Effect Accepted Boolean Route
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
 ```
 
 The live log showed wrong-owner `Player#addPotionEffect` and
@@ -195,7 +195,7 @@ explicit fire-and-forget entity routes.
 ## 2026-05-31 - Route Rule Registry Architecture Map
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=85 routeRules=55
 ```
 
 Exact raw-direct unsafe routes now flow through `RouteRuleRegistry` before the
@@ -214,7 +214,7 @@ live server run.
 ## 2026-05-31 - Entity Nearby Split And Invokedynamic Guard
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 The live probe exposed `Player#getNearbyEntities(DDD)` as a return-value
@@ -227,7 +227,7 @@ when the captured receiver descriptor would break `LambdaMetafactory`.
 ## 2026-05-31 - Deferred Chunk Return Model
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 `World#getChunkAt(...)` now has a second return model for Folia owner-thread
@@ -241,7 +241,7 @@ the original unsafe synchronous chunk retrieval.
 ## 2026-05-29 - Optional Dependency Transform Boundary
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 Byte Buddy typed-transform failures caused by a missing optional integration API
@@ -253,7 +253,7 @@ an adapter or hiding actual unsafe-call failures.
 ## 2026-05-29 - ASM Route Scanner Proof
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 The ASM experiment is useful enough to keep as a read-only evidence layer.
@@ -267,7 +267,7 @@ itself; it gives us a cleaner inventory tool before risky bytecode changes.
 ## 2026-05-29 - Entity Potion Effect Route
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The live first-join matrix exposed `Player#addPotionEffect(PotionEffect)` and
@@ -280,7 +280,7 @@ through that entity's scheduler before calling Bukkit.
 ## 2026-05-29 - Block Material Read/Mutation Route
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The live probe exposed `Block#getType()` as a real `C_REGION_BLOCK` owner path:
@@ -293,7 +293,7 @@ owning region scheduler instead of throwing first and recovering later.
 ## 2026-05-29 - Scan Probe Setup Attribution
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=203 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=203 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The live log showed `Location#getChunk()` escaping the target probe wrapper
@@ -305,7 +305,7 @@ that chunk inside the `Chunk#getEntities` probe body with
 ## 2026-05-29 - Scoreboard Display State Model
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=203 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=203 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The `D_PLAYER_UI` scoreboard shim now covers team/objective/score display-state
@@ -319,7 +319,7 @@ application remains a future packet/player-owned apply route.
 ## 2026-05-29 - Scoreboard Objective/Score Model
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=175 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=175 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The `D_PLAYER_UI` scoreboard shim now covers objective and score model paths:
@@ -331,7 +331,7 @@ asserts both `[FBB guard-path]` rewrite evidence and `[FBB unsafe-call]`
 ## 2026-05-29 - Player Scoreboard Model Registry
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=157 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=157 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 The `D_PLAYER_UI` scoreboard model now covers player-owned boards as well as
@@ -343,7 +343,7 @@ retains the model instead of calling Folia's hard-disabled native setter.
 ## 2026-05-29 - First-Join Probe Owner Matrix
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=148 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=148 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2
 ```
 
 This pass follows the probe expansion for first-join player-owned owner shapes.
@@ -352,32 +352,32 @@ calls beside the existing `Player` calls so live logs can tell whether a miss is
 an owner/name/descriptor gap or a route-family mistake. The smoke harness still
 emits the intentional `[FBB task-failure]` line for route/caller diagnostics.
 
-## 2026-05-29 - FAWE World/Chunk Route Expansion
+## 2026-05-29 - world-editing reference World/Chunk Route Expansion
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=139 bytecodeJars=3 bytecodeClasses=4075 bytecodeRequiredHits=53 bytecodeMissing=[scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, player-teleport-cause, world-strikeLightning, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=1 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=139 bytecodeJars=3 bytecodeClasses=4075 bytecodeRequiredHits=53 bytecodeMissing=[scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, player-teleport-cause, world-strikeLightning, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=1 rawCommandDispatchHits=2
 ```
 
-This pass included `PlayerKits2-1.22.1.jar`, `UltimateHomes-3.1.jar`, and
-`FastAsyncWorldEdit-Paper-2.15.1.jar`. It verifies the FAWE legacy async
+This pass included `kit-plugin-reference.jar`, `UltimateHomes-3.1.jar`, and
+`world-editing-plugin-reference.jar`. It verifies the world-editing reference legacy async
 scheduler shape still rewrites, and the probe smoke emits route evidence for
 `World#getLoadedChunks`, `Chunk#getEntities`, and `World#spawnEntity(Location,EntityType)`.
 `World#getLoadedChunks` remains diagnostic-only because it is a whole-world scan.
 
-## 2026-05-29 - FAWE Legacy Async Repeating Scheduler
+## 2026-05-29 - world-editing reference Legacy Async Repeating Scheduler
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=131 bytecodeJars=3 bytecodeClasses=4075 bytecodeRequiredHits=53 bytecodeMissing=[scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, player-teleport-cause, world-strikeLightning, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=1 rawCommandDispatchHits=2
+SMOKE_OK bridgeCalls=22 unsafeCalls=131 bytecodeJars=3 bytecodeClasses=4075 bytecodeRequiredHits=53 bytecodeMissing=[scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, player-teleport-cause, world-strikeLightning, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=1 rawCommandDispatchHits=2
 ```
 
-Live-server evidence showed FAWE calling `BukkitScheduler#scheduleAsyncRepeatingTask(Plugin,Runnable,long,long): int` from `BukkitTaskManager#repeatAsync`. The raw scheduler transformer now maps that legacy int-returning call to `ObjectSchedulerBridge#scheduleAsyncRepeatingTask` under `route=S_ASYNC`, using Folia's async scheduler `runAtFixedRate` and returning a synthetic task id.
+Live-server evidence showed world-editing reference calling `BukkitScheduler#scheduleAsyncRepeatingTask(Plugin,Runnable,long,long): int` from `BukkitTaskManager#repeatAsync`. The raw scheduler transformer now maps that legacy int-returning call to `ObjectSchedulerBridge#scheduleAsyncRepeatingTask` under `route=S_ASYNC`, using Folia's async scheduler `runAtFixedRate` and returning a synthetic task id.
 
 Last local run: 2026-05-28
 
 Command shape:
 
 ```text
-java -Dfoliabytecodebridge.forceNonFolia=true -Dfoliabytecodebridge.metadataOverlay=all -Dfoliabytecodebridge.smokeNoPassthrough=true -Dfoliabytecodebridge.debug=true -Dfoliabytecodebridge.deepPluginJars=<PlayerKits2.jar;EssentialsX.jar> -javaagent:FoliaBytecodeBridge.jar -cp <smoke classes + bridge + Paper API deps> smoketest.SmokeMain
+java -Dfoliabytecodebridge.forceNonFolia=true -Dfoliabytecodebridge.metadataOverlay=all -Dfoliabytecodebridge.smokeNoPassthrough=true -Dfoliabytecodebridge.debug=true -Dfoliabytecodebridge.deepPluginJars=<kit plugin reference.jar;EssentialsX.jar> -javaagent:FoliaBytecodeBridge.jar -cp <smoke classes + bridge + Paper API deps> smoketest.SmokeMain
 ```
 
 Result:
@@ -439,14 +439,14 @@ SMOKE_OK bridgeCalls=22 unsafeCalls=205 ... routeRules=56 ... mcUtilExecutorEvid
 
 Last local smoke run: 2026-05-31
 
-FAWE's `QueueHandler#run` exposed a legacy main-thread predicate after the task
+world-editing reference's `QueueHandler#run` exposed a legacy main-thread predicate after the task
 had already been routed through `S_GLOBAL`. The new transformer rewrites the
-exact `com.fastasyncworldedit.core.Fawe#isMainThread()Z` method body, preserving
+exact `com.worldeditingreference.core.LegacyMainThreadOwner#isMainThread()Z` method body, preserving
 the original captured-thread check and adding a Folia tick/Bukkit primary-thread
 fallback only for the original false path.
 
 ```text
-[FBB legacy-main-thread] class=com.fastasyncworldedit.core.Fawe ... route=S_GLOBAL rule=exact-owner-method-body action=rewritten
+[FBB legacy-main-thread] class=com.worldeditingreference.core.LegacyMainThreadOwner ... route=S_GLOBAL rule=exact-owner-method-body action=rewritten
 SMOKE_OK ... legacyMainThreadEvidence=fawe-isMainThread-original-check+folia-fallback
 ```
 
@@ -462,7 +462,7 @@ cannot safely block a Folia owner thread: loaded-chunk-index return for
 Result:
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 ## Void Region Route Smoke
@@ -477,7 +477,7 @@ fire-and-forget on the owning region.
 Result:
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 ## Route Model Report Smoke
@@ -499,7 +499,7 @@ and world-scan models:
 Result:
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 ## D_PLAYER_UI Inventory Owner Smoke
@@ -518,7 +518,7 @@ before runtime:
 Result:
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 ## Sync-Return Wait Guard Smoke
@@ -536,7 +536,7 @@ added.
 Result:
 
 ```text
-SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawFaweAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 bytecodeJars=2 bytecodeClasses=265 bytecodeRequiredHits=39 bytecodeMissing=[scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, player-teleport-cause, world-strikeLightning, world-generateTree, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=52
 ```
 
 ## S_GLOBAL Command Dispatch Smoke
@@ -650,7 +650,7 @@ Boot smoke:
 
 ```text
 [PluginInitializerManager] Initialized 5 plugins
- - FBBProbe, FBBProbeControl, FoliaBytecodeBridge, PlayerKits2, UltimateHomes
+ - FBBProbe, FBBProbeControl, FoliaBytecodeBridge, kit plugin reference, UltimateHomes
 [FBBProbeControl] [FBB probe] enabled root=/fbbprobecontrol bridgeRole=control-untransformed ...
 [FBBProbe] [FBB probe] enabled root=/fbbprobe bridgeRole=target-transformed ...
 Done (20.507s)! For help, type "help"
@@ -728,7 +728,7 @@ Result:
 
 ```text
 [PluginInitializerManager] Initialized 4 plugins
- - FBBProbe (0.1.0-SNAPSHOT), FoliaBytecodeBridge (0.1.0-SNAPSHOT), PlayerKits2 (1.22.1), UltimateHomes (3.1)
+ - FBBProbe (0.1.0-SNAPSHOT), FoliaBytecodeBridge (0.1.0-SNAPSHOT), kit plugin reference (1.22.1), UltimateHomes (3.1)
 [FoliaBytecodeBridge] Bytecode transformer is installed. mode=JAVA_AGENT
 [FBBProbe] [FBB probe] enabled root=/fbbprobe modes=safe, scan, ui, visibility, entity, world, chunk, server, scoreboard, paper, all, destructive
 Done (18.527s)! For help, type "help"
@@ -805,8 +805,8 @@ Meaning:
 - The smoke test asserts every emitted `route=<...>` value belongs to `RouteFamily` and specifically checks `[FBB scheduler]`, `[FBB unsafe-call]`, `[FBB unsafe-failure]`, and `[FBB task-failure]`.
 - Optional transform-skip logs separate expected bootstrap skips from real transform failures with `[FBB transform-skip] reason=bukkit-api-not-visible-yet` when `foliabytecodebridge.traceTransformSkips=true`.
 - The smoke fixture now covers declared-owner surprises from Paper's API: player source calls can resolve through `Entity`, `HumanEntity`, or `LivingEntity`.
-- The deep smoke fixture covers scheduler overloads, `BukkitRunnable` overloads, null-receiver failure logging, proxy-backed plugin-style chains, and bytecode inventory scanning of the built PlayerKits2 and EssentialsX jars.
-- The raw-transform smoke fixture verifies the inherited-owner PlayerKits2 join path: `PlayersConfigManager#loadConfig` compiles to `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` and must rewrite to `ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously`.
+- The deep smoke fixture covers scheduler overloads, `BukkitRunnable` overloads, null-receiver failure logging, proxy-backed plugin-style chains, and bytecode inventory scanning of the built kit plugin reference and EssentialsX jars.
+- The raw-transform smoke fixture verifies the inherited-owner kit plugin reference join path: `PlayersConfigManager#loadConfig` compiles to `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` and must rewrite to `ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously`.
 - The raw-transform smoke fixture also guards the Essentials helper path: `Essentials#runTaskAsynchronously(Runnable)` must not be misclassified as a `BukkitRunnable` receiver. Its internal `getScheduler().runTaskAsynchronously(this, run)` call is the bytecode path that belongs in `S_ASYNC`.
 
 ## Live `run.bat` Smoke, 2026-05-28 17:06
@@ -837,8 +837,8 @@ Important evidence:
 ```text
 [FBB attach] mode=SELF_ATTACH installed=true phase=onLoad exit=0
 [FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager path=raw-scheduler result=patched replacements=1
-[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=PlayerKits2 caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
-[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=PlayerKits2 caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
+[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
+[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
 [FBB scheduler] api=BukkitScheduler#runTaskAsynchronously route=S_ASYNC policy=async plugin=Essentials caller=com.earth2me.essentials.Essentials#runTaskAsynchronously(Essentials.java:1237)
 Done (30.074s)! For help, type "help"
 ```
@@ -887,7 +887,7 @@ at pk.ajneb97.configs.PlayersConfigManager.loadConfig(PlayersConfigManager.java:
 ```
 
 That means the anonymous task class loaded and was transformed, but the outer caller instruction was still invoking the inherited BukkitRunnable method. The next bridge rule adds narrow synthetic overrides to anonymous BukkitRunnable subclasses, so virtual dispatch can route `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` through `ObjectSchedulerBridge` even if the caller class was loaded before self-attach could rewrite it.
-- The bytecode inventory scanner found 79 required reusable call-shape hits across PlayerKits2 and EssentialsX, including Essentials' shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` `/home` path.
+- The bytecode inventory scanner found 79 required reusable call-shape hits across kit plugin reference and EssentialsX, including Essentials' shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` `/home` path.
 - It records two `World#spawnEntity` hits as known gaps because the local Paper 26.1.2 API jar used to compile the bridge does not expose that method.
 
 ## Essentials `/home` Teleport Follow-Up, 2026-05-28
@@ -916,7 +916,7 @@ Last server run: 2026-05-28
 Setup:
 
 - `debug-server/eula.txt` was set to `eula=true` after explicit user approval.
-- Current test servers can use `metadataOverlay=all` to open Folia's plugin metadata gate without editing plugin jars. Older patched PlayerKits2 and EssentialsX copies may still exist in `debug-server/original-plugins/` for comparison, but new smoke evidence should prefer the overlay logs.
+- Current test servers can use `metadataOverlay=all` to open Folia's plugin metadata gate without editing plugin jars. Older patched kit plugin reference and EssentialsX copies may still exist in `debug-server/original-plugins/` for comparison, but new smoke evidence should prefer the overlay logs.
 - The bridge ran as both `-javaagent:plugins/FoliaBytecodeBridge.jar` and a Bukkit plugin.
 
 Result:
@@ -958,7 +958,7 @@ Folia metadata:
 
 ```text
 [PluginInitializerManager] Initialized 3 plugins
-FoliaBytecodeBridge, PlayerKits2, UltimateHomes
+FoliaBytecodeBridge, kit plugin reference, UltimateHomes
 ```
 
 The same run showed useful scheduler evidence for the newly loaded home plugin:
@@ -969,8 +969,8 @@ The same run showed useful scheduler evidence for the newly loaded home plugin:
 
 Observed routes:
 
-- `BukkitRunnable#runTaskTimer` from `PlayerKits2` inventory update startup.
-- `BukkitRunnable#runTaskTimerAsynchronously` from `PlayerKits2` player data save startup.
+- `BukkitRunnable#runTaskTimer` from `kit plugin reference` inventory update startup.
+- `BukkitRunnable#runTaskTimerAsynchronously` from `kit plugin reference` player data save startup.
 - `BukkitScheduler#scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask` through Essentials' helper wrappers.
 - `BukkitScheduler#runTaskAsynchronously` through Essentials' helper wrapper.
 
@@ -1002,8 +1002,8 @@ SUMMARY freshLog=True done=1 schedulerLogs=7 unsafeCalls=0 unsafeFailures=0 task
 
 Observed route-family evidence:
 
-- `S_GLOBAL`: PlayerKits2 `BukkitRunnable#runTaskTimer`; Essentials `scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask`.
-- `S_ASYNC`: PlayerKits2 `BukkitRunnable#runTaskTimerAsynchronously`; Essentials `runTaskAsynchronously`.
+- `S_GLOBAL`: kit plugin reference `BukkitRunnable#runTaskTimer`; Essentials `scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask`.
+- `S_ASYNC`: kit plugin reference `BukkitRunnable#runTaskTimerAsynchronously`; Essentials `runTaskAsynchronously`.
 - `A_ENTITY`, `B_REGION_LOCATION`, `C_REGION_BLOCK`, `D_PLAYER_UI`, `F_PLAYER_VISIBILITY`, `G_WORLD_SCAN_SPLIT`: no startup-time unsafe direct calls were executed during this smoke. This is useful negative evidence, not a reason to add broader logging.
 
 The Java-agent live run confirms the most deterministic startup path. A later
@@ -1041,8 +1041,8 @@ Startup then emitted scheduler evidence and reached `Done` without the previous
 Folia `UnsupportedOperationException` enable failures:
 
 ```text
-[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=PlayerKits2 caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
-[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=PlayerKits2 caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
+[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
+[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
 [FBB scheduler] api=BukkitScheduler#scheduleSyncDelayedTask route=S_GLOBAL policy=global plugin=Essentials caller=com.earth2me.essentials.Essentials#scheduleSyncDelayedTask(Essentials.java:1252)
 ```
 

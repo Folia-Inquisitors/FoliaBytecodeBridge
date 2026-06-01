@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 final class RawLegacyMainThreadTransformer implements ClassFileTransformer {
 
-    static final String FAWE_OWNER = "com/fastasyncworldedit/core/Fawe";
+    static final String LEGACY_MAIN_THREAD_OWNER = "com/fastasyncworldedit/core/Fawe";
     static final String BRIDGE = "dev/foliabytecodebridge/LegacyMainThreadBridge";
     static final String BRIDGE_METHOD = "compatibleWhenLegacyMainThreadFalse";
     static final String BRIDGE_DESCRIPTOR = "(Ljava/lang/String;Ljava/lang/String;)Z";
@@ -33,7 +33,7 @@ final class RawLegacyMainThreadTransformer implements ClassFileTransformer {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                  String signature, String[] exceptions) {
-                    if (FAWE_OWNER.equals(className)
+                    if (LEGACY_MAIN_THREAD_OWNER.equals(className)
                             && "isMainThread".equals(name)
                             && "()Z".equals(descriptor)) {
                         MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
@@ -60,9 +60,9 @@ final class RawLegacyMainThreadTransformer implements ClassFileTransformer {
                                 BridgeDiagnostics.legacyMainThreadPath(className, loader, protectionDomain,
                                         name, descriptor, owner, methodName, methodDescriptor,
                                         RouteFamily.S_GLOBAL,
-                                        FAWE_OWNER.equals(owner) ? "exact-owner-callsite" : "generic-name-descriptor",
+                                        LEGACY_MAIN_THREAD_OWNER.equals(owner) ? "exact-owner-callsite" : "generic-name-descriptor",
                                         "trace-only",
-                                        FAWE_OWNER.equals(owner)
+                                        LEGACY_MAIN_THREAD_OWNER.equals(owner)
                                                 ? "callee-method-body-rewrite-handles-this-call"
                                                 : "observed-static-isMainThread-shape-needs-owner-model-before-rewrite");
                             }
@@ -87,26 +87,26 @@ final class RawLegacyMainThreadTransformer implements ClassFileTransformer {
 
         method.visitCode();
 
-        // Preserve FAWE's original predicate exactly: no instance means safe, and the captured
+        // Preserve the original predicate exactly: no instance means safe, and the captured
         // startup thread is still treated as main. Only false results fall through to the Folia
         // compatibility answer.
-        method.visitFieldInsn(Opcodes.GETSTATIC, FAWE_OWNER, "instance", "L" + FAWE_OWNER + ";");
+        method.visitFieldInsn(Opcodes.GETSTATIC, LEGACY_MAIN_THREAD_OWNER, "instance", "L" + LEGACY_MAIN_THREAD_OWNER + ";");
         method.visitJumpInsn(Opcodes.IFNULL, returnTrue);
-        method.visitFieldInsn(Opcodes.GETSTATIC, FAWE_OWNER, "instance", "L" + FAWE_OWNER + ";");
-        method.visitFieldInsn(Opcodes.GETFIELD, FAWE_OWNER, "thread", "Ljava/lang/Thread;");
+        method.visitFieldInsn(Opcodes.GETSTATIC, LEGACY_MAIN_THREAD_OWNER, "instance", "L" + LEGACY_MAIN_THREAD_OWNER + ";");
+        method.visitFieldInsn(Opcodes.GETFIELD, LEGACY_MAIN_THREAD_OWNER, "thread", "Ljava/lang/Thread;");
         method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Thread", "currentThread",
                 "()Ljava/lang/Thread;", false);
         method.visitJumpInsn(Opcodes.IF_ACMPNE, fallback);
         method.visitLabel(returnTrue);
         // Preserve existing class frames by avoiding whole-class frame recomputation. Because
         // this replacement method has two branch targets, emit its small stack-map frames
-        // directly instead of asking ASM to infer every FAWE method.
+        // directly instead of asking ASM to infer every method in this owner.
         method.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
         method.visitInsn(Opcodes.ICONST_1);
         method.visitInsn(Opcodes.IRETURN);
         method.visitLabel(fallback);
         method.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-        method.visitLdcInsn(FAWE_OWNER.replace('/', '.'));
+        method.visitLdcInsn(LEGACY_MAIN_THREAD_OWNER.replace('/', '.'));
         method.visitLdcInsn("isMainThread");
         method.visitMethodInsn(Opcodes.INVOKESTATIC, BRIDGE, BRIDGE_METHOD, BRIDGE_DESCRIPTOR, false);
         method.visitInsn(Opcodes.IRETURN);

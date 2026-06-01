@@ -17,14 +17,14 @@ current test context, usually the joining player's owning region thread.
 | Route rule registry | exact owner/name/descriptor entries in `RouteRuleRegistry` | The route-family architecture map is now a code registry, not scattered strings. Exact rules carry owner, route, bridge method, return policy, status, and note; dynamic shapes still log as `dynamic-or-unregistered` until promoted. |
 | Startup probe | `mode=startup context=global,async,region` | The probe now emits boot-time evidence without waiting for player join. It covers server/world/chunk/unowned-scoreboard shapes plus no-player recovery candidates, and clearly blocks player-only paths with `reason=use first-join...`. |
 | First-join matrix | `safe,scan,ui,visibility,entity,world,paper` across `current,entity,async,global,region,foreign-region` | Once a real player exists, the probe now gathers player/entity/UI/world evidence from the major Folia execution contexts automatically. This is intentionally noisy and can be reduced with `-Dfbbprobe.firstJoinContexts=current`. |
-| Rewritten | `BukkitScheduler#scheduleAsyncRepeatingTask(Plugin,Runnable,long,long): int` | FAWE exposed this legacy async repeating scheduler shape. It is now a general `S_ASYNC` raw scheduler route to `ObjectSchedulerBridge#scheduleAsyncRepeatingTask`, with `[FBB bytecode-path]` and `[FBB scheduler]` evidence from `BukkitTaskManager#repeatAsync`. |
+| Rewritten | `BukkitScheduler#scheduleAsyncRepeatingTask(Plugin,Runnable,long,long): int` | world-editing reference exposed this legacy async repeating scheduler shape. It is now a general `S_ASYNC` raw scheduler route to `ObjectSchedulerBridge#scheduleAsyncRepeatingTask`, with `[FBB bytecode-path]` and `[FBB scheduler]` evidence from `BukkitTaskManager#repeatAsync`. |
 | Rewritten | `Player#teleport(Location)`, `Player#teleport(Location,TeleportCause)` | Folia patch makes sync teleport throw; bridge rewrote these to the `A_ENTITY` teleportAsync shim. |
 | Rewritten | `Bukkit#dispatchCommand(CommandSender,String)`, `Server#dispatchCommand(CommandSender,String)` | Folia requires entity senders on the entity scheduler and console/global senders on the global region. The bridge now schedules that route and returns `scheduled-true` because the old boolean result is not synchronously knowable. |
 | Failed guard | `ScoreboardManager#getNewScoreboard()` | Folia marks scoreboard creation unsupported today. Do not hide this; use the probe fingerprint to decide whether a future bytecode route can preserve semantics. |
 | Completed guard | `World#loadChunk(int,int)` | Completed because the test chunk was in the active region. This is not proof that arbitrary chunk loads are safe. |
 | Completed context reads | `getLocation`, `getWorld`, `getBlockAt`, `getChunkAt`, `getEntities`, `getNearbyEntities` | Useful route evidence, but not automatic rewrite candidates. They may still fail off-region or from async code. |
 | Completed context mutations | `setVelocity`, `setGameMode`, `addPotionEffect`, `Block#setType`, sound/effect calls | Worked from the current owning region. Promote only when receiver/location context can be preserved. |
-| Plugin binary failure | FAWE `PaperweightFaweWorldNativeAccess` -> `MinecraftServer.currentTick` | `NoSuchFieldError`, not a Folia thread guard. The evidence tool now classifies this as `NMS_VERSION_COMPAT` and emits `[FBB compat]` with owner/name/descriptor, plugin jar, caller, and the next adapter-research step. |
+| Plugin binary failure | world-editing reference `PaperweightLegacyMainThreadOwnerWorldNativeAccess` -> `MinecraftServer.currentTick` | `NoSuchFieldError`, not a Folia thread guard. The evidence tool now classifies this as `NMS_VERSION_COMPAT` and emits `[FBB compat]` with owner/name/descriptor, plugin jar, caller, and the next adapter-research step. |
 | Server member map | `MinecraftServer.currentTick:I` | `[FBB member-map]` finds `net.minecraft.server.MinecraftServer` in `versions\26.1.2\folia-26.1.2.jar`, but `exactMatch=false`. Nearby candidates include `currentTickStart:J` and `tickTaskTickCount:AtomicInteger`, which require adapter research before any rewrite. |
 
 ## 2026-05-29 01:03 Startup Probe Pass
@@ -46,10 +46,10 @@ joined. Useful lines included:
 
 ## 2026-05-29 01:49 Invokedynamic Method References
 
-FAWE exposed a generic Java method-reference shape:
+world-editing reference exposed a generic Java method-reference shape:
 
 ```text
-com.fastasyncworldedit.bukkit.adapter.IBukkitAdapter#getEntities(World)
+com.worldeditingreference.bukkit.adapter.IBukkitAdapter#getEntities(World)
 owner=org.bukkit.World name=getEntities descriptor=()Ljava/util/List;
 ```
 
@@ -62,7 +62,7 @@ owner/name/descriptor pairs:
 [FBB guard-path] ... route=G_WORLD_SCAN_SPLIT guard=CraftWorld#entity-scan action=rewritten reason=rewritten: invokedynamic method reference handle routed through bridge
 ```
 
-This is not FAWE-specific support. Any plugin with the same method-reference
+This is not world-editing reference-specific support. Any plugin with the same method-reference
 bytecode shape should route through the same bridge method. For whole-world
 scans such as `World#getEntities`, the bridge keeps the result under
 `G_WORLD_SCAN_SPLIT` and now uses `next=split-scan-by-loaded-chunks`.

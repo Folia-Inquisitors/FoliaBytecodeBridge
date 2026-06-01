@@ -8,20 +8,19 @@ support for one plugin name or one command.
 
 Audited references:
 
-- `FoliaLib-main.zip`
 - `dynmap-3.0.zip`
-- `SuperVanish-master.zip`
+- `visibility-plugin-reference.zip`
 - `Essentials-2.x.zip`
-- `FastAsyncWorldEdit-main (1).zip`
+- `world-editing-plugin-reference.zip`
 - live `UltimateHomes-3.1.jar`
 
 The source zips were extracted under `target/audit-inputs-tar/` for local grep
 only. That folder is not part of the runtime bridge.
 
-## FoliaLib Reference
+## External Adapter Reference
 
-FoliaLib was useful as a behavior map, not as a dependency. Its Folia
-implementation shows the same routing ideas we are using as route families:
+External Folia adapter examples were useful as behavior maps, not as
+dependencies. They show the same routing ideas we are using as route families:
 
 - global work goes to the global scheduler
 - async work goes to the async scheduler
@@ -30,8 +29,8 @@ implementation shows the same routing ideas we are using as route families:
 - teleport uses `Entity#teleportAsync(...)`
 
 The bridge should keep using direct bytecode evidence from target plugins before
-adding a rewrite. FoliaLib tells us the likely Folia-safe direction; the plugin
-bytecode tells us the owner/name/descriptor shape.
+adding a rewrite. Adapter examples can suggest the likely Folia-safe direction;
+plugin bytecode tells us the owner/name/descriptor shape.
 
 The probe now follows that same behavior-map idea with context runs:
 
@@ -51,13 +50,13 @@ major difference is whether FoliaBytecodeBridge rewrote the bytecode.
 
 | Route | Seen in references | Probe coverage |
 | --- | --- | --- |
-| `S_GLOBAL` / `S_ASYNC` | SuperVanish `BukkitRunnable`, Essentials scheduler wrappers, dynmap sync delayed/repeating tasks, FAWE task manager | Main smoke fixture already covers scheduler overloads; probe focuses on direct unsafe API families. |
-| `A_ENTITY` | UltimateHomes and FAWE direct `Player#teleport(Location)`, FoliaLib `teleportAsync`, SuperVanish velocity/game mode/potion calls, Essentials projectile/entity commands | `Player#getLocation`, `Player#getWorld`, direct teleport overloads, velocity, game mode, potion add/remove, audio. |
-| `B_REGION_LOCATION` | dynmap block/chunk reads, Essentials drops/explosions/lightning/spawn/tree, FAWE world/drop/tree access | world block/chunk lookup, loaded chunks, lightning, zero-power explosions, drops, spawn, tree generation. |
-| `C_REGION_BLOCK` | Essentials sign/block commands, FAWE block access, dynmap block reads | block location, same-material block set, block-owned chunk lookup. |
-| `D_PLAYER_UI` | SuperVanish silent chest, Essentials disposal/enderchest/invsee/sign inventories | open/close inventory. |
-| `F_PLAYER_VISIBILITY` | SuperVanish hide/show utility, Essentials vanish interactions | plugin-aware and legacy hide/show overloads. |
-| `G_WORLD_SCAN_SPLIT` | dynmap and FAWE world/entity scans, Essentials `/gc` and remove scans | player nearby scan, world nearby scan, world entity scans, chunk entity scan. |
+| `S_GLOBAL` / `S_ASYNC` | visibility plugin reference `BukkitRunnable`, Essentials scheduler wrappers, dynmap sync delayed/repeating tasks, world-editing reference task manager | Main smoke fixture already covers scheduler overloads; probe focuses on direct unsafe API families. |
+| `A_ENTITY` | UltimateHomes and world-editing reference direct `Player#teleport(Location)`, adapter-style `teleportAsync`, visibility plugin reference velocity/game mode/potion calls, Essentials projectile/entity commands | `Player#getLocation`, `Player#getWorld`, direct teleport overloads, velocity, game mode, potion add/remove, audio. |
+| `B_REGION_LOCATION` | dynmap block/chunk reads, Essentials drops/explosions/lightning/spawn/tree, world-editing reference world/drop/tree access | world block/chunk lookup, loaded chunks, lightning, zero-power explosions, drops, spawn, tree generation. |
+| `C_REGION_BLOCK` | Essentials sign/block commands, world-editing reference block access, dynmap block reads | block location, same-material block set, block-owned chunk lookup. |
+| `D_PLAYER_UI` | visibility plugin reference silent chest, Essentials disposal/enderchest/invsee/sign inventories | open/close inventory. |
+| `F_PLAYER_VISIBILITY` | visibility plugin reference hide/show utility, Essentials vanish interactions | plugin-aware and legacy hide/show overloads. |
+| `G_WORLD_SCAN_SPLIT` | dynmap and world-editing reference world/entity scans, Essentials `/gc` and remove scans | player nearby scan, world nearby scan, world entity scans, chunk entity scan. |
 
 ## Promotion Rule
 

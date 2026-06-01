@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Folia rejects direct {@code MinecraftServer#execute(Runnable)} because the
  * old single-main-thread executor no longer owns every server operation. This
- * bytecode shape is route-family evidence, not a plugin-specific FAWE patch:
+ * bytecode shape is route-family evidence, not a plugin-specific patch:
  * any plugin adapter that calls the same NMS executor shape is routed through
  * {@link ServerExecutorBridge} so the failure remains grouped under
  * {@link RouteFamily#S_GLOBAL}.</p>

@@ -12,7 +12,7 @@ shape that the running Folia/Paper jar does not expose.
 Evidence line:
 
 ```text
-[FBB compat] category=NMS_VERSION_COMPAT throwable=NoSuchFieldError owner=net.minecraft.server.MinecraftServer name=currentTick descriptor=I kind=field pluginJar=FastAsyncWorldEdit-Paper-2.15.1.jar caller=com.sk89q.worldedit.bukkit.adapter.impl.fawe.v26_1.PaperweightFaweWorldNativeAccess#<init>(PaperweightFaweWorldNativeAccess.java:65) action=diagnostic-only reason=server-internal-field-missing next=inspect-running-server-member-map-before-bytecode-adapter
+[FBB compat] category=NMS_VERSION_COMPAT throwable=NoSuchFieldError owner=net.minecraft.server.MinecraftServer name=currentTick descriptor=I kind=field pluginJar=world-editing-plugin-reference.jar caller=com.sk89q.worldedit.bukkit.adapter.impl.fawe.v26_1.PaperweightLegacyMainThreadOwnerWorldNativeAccess#<init>(PaperweightLegacyMainThreadOwnerWorldNativeAccess.java:65) action=diagnostic-only reason=server-internal-field-missing next=inspect-running-server-member-map-before-bytecode-adapter
 ```
 
 This is not a scheduler or ownership rewrite. Before adding a bytecode adapter,
@@ -58,7 +58,7 @@ references a versioned or renamed owner and needs owner mapping research first.
 
 The `SERVER_TICK_COUNTER` adapter is the first promoted `NMS_VERSION_COMPAT`
 path. Paper exposes `MinecraftServer.currentTick:I` and increments it in the
-main tick loop. Folia 26.1.2 does not expose that field, while FAWE-style
+main tick loop. Folia 26.1.2 does not expose that field, while world-editing reference-style
 adapters may still read it directly. FBB now adds the field while
 `net.minecraft.server.MinecraftServer` is first being defined and updates it
 from `TickRegions.TickRegionData#getCurrentTick()` at the start of
@@ -270,7 +270,7 @@ When `traceBytecodePaths=true`, every raw scheduler rewrite explains the exact b
 [FBB bytecode-path] class=<class> in=<method><descriptor> source=<owner>#<name><descriptor> route=<S_GLOBAL|S_ASYNC> bridge=ObjectSchedulerBridge#<method><descriptor>
 ```
 
-This is the main evidence line for "did we route the right bytecode path?" A correct PlayerKits2 anonymous `BukkitRunnable` route should show an owner like `pk.ajneb97.configs.PlayersConfigManager$1`, while a correct Essentials helper route should show `source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(...)`, not `source=com.earth2me.essentials.Essentials#runTaskAsynchronously(...)`.
+This is the main evidence line for "did we route the right bytecode path?" A correct kit plugin reference anonymous `BukkitRunnable` route should show an owner like `pk.ajneb97.configs.PlayersConfigManager$1`, while a correct Essentials helper route should show `source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(...)`, not `source=com.earth2me.essentials.Essentials#runTaskAsynchronously(...)`.
 
 ## Teleport Path Logs
 
@@ -347,7 +347,7 @@ bytecode owners or call sites still get separate evidence.
 Example:
 
 ```text
-[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=SuperVanish caller=de.myzelyam.supervanish.visibility.ActionBarMgr#startTask(ActionBarMgr.java:58)
+[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=visibility plugin reference caller=example.visibility.ActionBarMgr#startTask(ActionBarMgr.java:58)
 ```
 
 ## Task Failure Logs
@@ -370,7 +370,7 @@ thread, so FBB treats this as a scheduler/global compatibility model rather than
 an NMS synthetic member.
 
 The first promoted rule is an exact method-body rewrite for
-`com.fastasyncworldedit.core.Fawe#isMainThread()Z`. It keeps FAWE's original
+`com.worldeditingreference.core.LegacyMainThreadOwner#isMainThread()Z`. It keeps world-editing reference's original
 captured-thread check and only falls back to a Folia-aware answer when the
 legacy predicate would have returned `false`. The fallback returns `true` only
 from known Folia/Bukkit tick contexts; async worker pools still return `false`.

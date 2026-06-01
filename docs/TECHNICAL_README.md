@@ -35,23 +35,23 @@ On normal Paper/Spigot, calls pass through to the original Bukkit scheduler.
 
 ## Project Notes
 
-- [Architecture notes](docs/ARCHITECTURE.md) explain the agent/runtime split and extension rules.
-- [Bytecode routes](docs/BYTECODE_ROUTES.md) explains the official `RouteFamily` architecture map and when another plugin with the same bytecode is covered.
-- [Diagnostics](docs/DIAGNOSTICS.md) explains debug flags and failure-path logs.
-- [Direct unsafe trace matrix](docs/DIRECT_UNSAFE_TRACE_MATRIX.md) lists high-risk player/world/block/entity probes.
-- [Probe audit](docs/PROBE_AUDIT.md) records how FoliaLib and the uploaded plugin references informed the probe coverage.
-- [Probe plugin notes](docs/PROBE_PLUGIN.md) describe the optional `FBBProbe` live-server test jar for intentionally triggering route families.
-- [Live probe triage](docs/LIVE_PROBE_TRIAGE.md) separates current-context completions from true Folia guard failures.
-- [Solution model](docs/SOLUTION_MODEL.md) explains which evidence can become a rewrite and which evidence must stay diagnostic.
-- [Paper guard audit](docs/PAPER_GUARD_AUDIT.md) maps Folia/Paper guard sites to route families before any new rewrite is added.
-- [Operations notes](docs/OPERATIONS.md) cover startup, testing, and failure reading.
-- [Smoke test result](docs/SMOKE_RESULT.md) records the local Java-agent smoke test.
-- [Transform matrix](docs/TRANSFORM_MATRIX.md) lists every supported rewrite.
-- [SuperVanish audit](docs/target-audits/SuperVanish.md) records the observed scheduler and direct Bukkit risks.
-- [FastAsyncWorldEdit audit](docs/target-audits/FastAsyncWorldEdit.md) records the observed scheduler and direct Bukkit/NMS risks.
-- [PlayerKits2 audit](docs/target-audits/PlayerKits2.md) records the observed scheduler, inventory, and effect risks.
-- [EssentialsX audit](docs/target-audits/EssentialsX.md) records the observed scheduler-wrapper and world-effect risks.
-- [Folia 1.20 reference notes](docs/target-audits/Folia-1.20-reference.md) record the historical scheduler-route evidence from the older Folia zip.
+- [Architecture notes](ARCHITECTURE.md) explain the agent/runtime split and extension rules.
+- [Bytecode routes](BYTECODE_ROUTES.md) explains the official `RouteFamily` architecture map and when another plugin with the same bytecode is covered.
+- [Diagnostics](DIAGNOSTICS.md) explains debug flags and failure-path logs.
+- [Direct unsafe trace matrix](DIRECT_UNSAFE_TRACE_MATRIX.md) lists high-risk player/world/block/entity probes.
+- [Probe audit](PROBE_AUDIT.md) records how external adapter examples and uploaded plugin references informed the probe coverage.
+- [Probe plugin notes](PROBE_PLUGIN.md) describe the optional `FBBProbe` live-server test jar for intentionally triggering route families.
+- [Live probe triage](LIVE_PROBE_TRIAGE.md) separates current-context completions from true Folia guard failures.
+- [Solution model](SOLUTION_MODEL.md) explains which evidence can become a rewrite and which evidence must stay diagnostic.
+- [Paper guard audit](PAPER_GUARD_AUDIT.md) maps Folia/Paper guard sites to route families before any new rewrite is added.
+- [Operations notes](OPERATIONS.md) cover startup, testing, and failure reading.
+- [Smoke test result](SMOKE_RESULT.md) records the local Java-agent smoke test.
+- [Transform matrix](TRANSFORM_MATRIX.md) lists every supported rewrite.
+- [visibility plugin reference audit](target-audits/visibility plugin reference.md) records the observed scheduler and direct Bukkit risks.
+- [world-editing plugin reference audit](target-audits/world-editing plugin reference.md) records the observed scheduler and direct Bukkit/NMS risks.
+- [kit plugin reference audit](target-audits/kit plugin reference.md) records the observed scheduler, inventory, and effect risks.
+- [EssentialsX audit](target-audits/EssentialsX.md) records the observed scheduler-wrapper and world-effect risks.
+- [Folia 1.20 reference notes](target-audits/Folia-1.20-reference.md) record the historical scheduler-route evidence from the older Folia zip.
 
 ## What it cannot guarantee
 
