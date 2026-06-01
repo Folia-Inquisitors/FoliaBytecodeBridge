@@ -19,8 +19,11 @@ import java.util.logging.Level;
  * console filtering is applied.</p>
  */
 final class DebugFileSink {
-    private static final Object LOCK = new Object();
+    private static final String JVM_LOCK_KEY = "dev.foliabytecodebridge.debugFileLock";
+    private static final int WRITE_ATTEMPTS = 5;
+    private static final long RETRY_DELAY_MILLIS = 25L;
     private static final AtomicBoolean HEADER_WRITTEN = new AtomicBoolean();
+    private static final AtomicBoolean WRITE_WARNING_PRINTED = new AtomicBoolean();
 
     private DebugFileSink() {
     }
@@ -29,7 +32,7 @@ final class DebugFileSink {
         if (!BridgeConfig.debugFile()) return;
         String sanitized = PrivacySanitizer.text(message);
         Path path = Path.of(BridgeConfig.debugFilePath());
-        synchronized (LOCK) {
+        synchronized (jvmLock()) {
             try {
                 Path parent = path.getParent();
                 if (parent != null) {
@@ -44,15 +47,47 @@ final class DebugFileSink {
                     append(path, PrivacySanitizer.text(stackTrace(throwable)));
                 }
             } catch (IOException exception) {
-                System.err.println("[FoliaBytecodeBridge] Could not write debug file "
-                        + PrivacySanitizer.text(path.toString()) + ": " + exception.getMessage());
+                if (WRITE_WARNING_PRINTED.compareAndSet(false, true)) {
+                    System.err.println("[FoliaBytecodeBridge] Could not write debug file "
+                            + PrivacySanitizer.text(path.toString()) + ": " + exception.getMessage()
+                            + " (further debug-file write warnings suppressed)");
+                }
             }
         }
     }
 
+    private static Object jvmLock() {
+        synchronized (System.getProperties()) {
+            Object lock = System.getProperties().get(JVM_LOCK_KEY);
+            if (lock != null) return lock;
+            Object created = new Object();
+            System.getProperties().put(JVM_LOCK_KEY, created);
+            return created;
+        }
+    }
+
     private static void append(Path path, String line) throws IOException {
-        Files.writeString(path, line + System.lineSeparator(), StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        IOException last = null;
+        for (int attempt = 1; attempt <= WRITE_ATTEMPTS; attempt++) {
+            try {
+                Files.writeString(path, line + System.lineSeparator(), StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                return;
+            } catch (IOException exception) {
+                last = exception;
+                sleepBeforeRetry(attempt);
+            }
+        }
+        throw last;
+    }
+
+    private static void sleepBeforeRetry(int attempt) {
+        if (attempt >= WRITE_ATTEMPTS) return;
+        try {
+            Thread.sleep(RETRY_DELAY_MILLIS * attempt);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static String stackTrace(Throwable throwable) {

@@ -16,6 +16,7 @@ versions/
 
 # Generated artifacts
 *.jar
+*.zip
 *.log
 *.args
 *.tmp
