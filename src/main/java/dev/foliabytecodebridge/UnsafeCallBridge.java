@@ -13,6 +13,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.TreeType;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -66,6 +67,7 @@ public final class UnsafeCallBridge {
     private static final Map<String, DetachedScoreboardModel> PLAYER_SCOREBOARDS = new ConcurrentHashMap<>();
     private static final Map<String, DeferredChunkModel> DEFERRED_CHUNKS = new ConcurrentHashMap<>();
     private static final Map<String, Material> BLOCK_TYPE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, BlockData> BLOCK_DATA_CACHE = new ConcurrentHashMap<>();
     private static volatile Plugin bridgePlugin;
 
     private UnsafeCallBridge() {
@@ -1333,6 +1335,18 @@ public final class UnsafeCallBridge {
                         () -> readBlockTypeAndRemember(block)));
     }
 
+    public static BlockData blockGetBlockData(Block block) {
+        String sourceApi = "Block#getBlockData";
+        String family = "region";
+        String nextAction = "region-scheduler-by-block";
+        String detail = blockDetail(block);
+        return preemptiveBlockDataOnFolia(sourceApi, family, nextAction, detail, block,
+                () -> isOwnedByCurrentRegion(block),
+                () -> readBlockDataAndRemember(block),
+                () -> callRegionScheduler(sourceApi, family, nextAction, detail, block.getLocation(),
+                        () -> readBlockDataAndRemember(block)));
+    }
+
     public static Location blockGetLocation(Block block) {
         return guarded("Block#getLocation", "region", "region-scheduler-by-block", blockDetail(block),
                 () -> block.getLocation());
@@ -1987,11 +2001,109 @@ public final class UnsafeCallBridge {
                                     + " thread=\"" + currentThreadName() + "\"");
                     return cached;
                 }
+
+                // Live claim-visualization evidence showed a common legacy shape:
+                // BukkitScheduler#scheduleSyncDelayedTask is translated to the global
+                // scheduler, then the delayed Runnable performs block-owned material
+                // reads. A direct retry from global still fails Folia's owner guard, so
+                // use a bounded owner-region read when the stack proves the current
+                // context is Folia's global scheduler. Other region/entity owner
+                // threads still avoid cross-owner waits and preserve the evidence.
+                if (isFoliaGlobalSchedulerContext()) {
+                    BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                            detail + " fallback=region-owned-sync-return"
+                                    + " policy=bounded-region-wait"
+                                    + " result=attempt"
+                                    + " reason=global-scheduler-block-read-cache-miss"
+                                    + " thread=\"" + currentThreadName() + "\"");
+                    return scheduled.get();
+                }
+
                 BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
                         detail + " fallback=block-material-cache"
                                 + " policy=sync-return-model"
                                 + " result=miss action=direct-preserve-original"
-                                + " reason=no-safe-sync-return-without-prior-owned-read"
+                                + " reason=no-safe-sync-return-without-prior-owned-read-or-global-context"
+                                + " thread=\"" + currentThreadName() + "\"");
+                return direct.get();
+            }
+            return scheduled.get();
+        } catch (Throwable throwable) {
+            BridgeDiagnostics.unsafeFailure(sourceApi, route, family, nextAction, throwable);
+            throw rethrow(throwable);
+        }
+    }
+
+    private static BlockData preemptiveBlockDataOnFolia(String sourceApi, String family, String nextAction,
+                                                         String detail, Block block,
+                                                         ThrowingBooleanSupplier ownerCheck,
+                                                         ThrowingSupplier<BlockData> direct,
+                                                         ThrowingSupplier<BlockData> scheduled) {
+        RouteFamily route = RouteFamily.forUnsafeCall(family, nextAction);
+        if (!isFolia()) {
+            markUnsafeCall(sourceApi, route, family, nextAction, detail + " policy=direct-non-folia");
+            try {
+                return direct.get();
+            } catch (Throwable throwable) {
+                BridgeDiagnostics.unsafeFailure(sourceApi, route, family, nextAction, throwable);
+                throw rethrow(throwable);
+            }
+        }
+
+        boolean owned = false;
+        boolean ownerCheckFailed = false;
+        try {
+            owned = ownerCheck != null && ownerCheck.getAsBoolean();
+        } catch (Throwable throwable) {
+            ownerCheckFailed = true;
+            BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                    detail + " ownerCheck=failed action=direct-preserve-original ownerCheckThrowable="
+                            + throwable.getClass().getName() + ": " + throwable.getMessage());
+        }
+
+        markUnsafeCall(sourceApi, route, family, nextAction,
+                detail + " policy=preemptive-safe reason=proven-live-route"
+                        + " ownerCheck=" + (ownerCheckFailed ? "failed-direct-preserve-original"
+                        : (owned ? "current-region-owned" : "schedule-owner-region")));
+        try {
+            if (owned || ownerCheckFailed) {
+                return direct.get();
+            }
+
+            BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                    detail + " fallback=preemptive-region-scheduler reason=proven-live-route");
+            if (isUnsafeScheduledReturnWaitThread()) {
+                BlockData cached = cachedBlockData(block);
+                if (cached != null) {
+                    BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                            detail + " fallback=block-data-cache"
+                                    + " policy=sync-return-model"
+                                    + " result=hit data=" + cached.getAsString()
+                                    + " reason=no-owner-thread-wait"
+                                    + " thread=\"" + currentThreadName() + "\"");
+                    return cached;
+                }
+
+                // Mirrors the Block#getType live route: legacy delayed scheduler
+                // tasks can run on Folia's global scheduler and still perform a
+                // synchronous block-owned read. From that specific owner context,
+                // use a bounded region wait so the old sync return shape is
+                // preserved without pretending the global thread owns the block.
+                if (isFoliaGlobalSchedulerContext()) {
+                    BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                            detail + " fallback=region-owned-sync-return"
+                                    + " policy=bounded-region-wait"
+                                    + " result=attempt"
+                                    + " reason=global-scheduler-block-data-cache-miss"
+                                    + " thread=\"" + currentThreadName() + "\"");
+                    return scheduled.get();
+                }
+
+                BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction,
+                        detail + " fallback=block-data-cache"
+                                + " policy=sync-return-model"
+                                + " result=miss action=direct-preserve-original"
+                                + " reason=no-safe-sync-return-without-prior-owned-read-or-global-context"
                                 + " thread=\"" + currentThreadName() + "\"");
                 return direct.get();
             }
@@ -2499,6 +2611,21 @@ public final class UnsafeCallBridge {
                 || threadName.contains("Server thread");
     }
 
+    private static boolean isFoliaGlobalSchedulerContext() {
+        for (StackTraceElement element : Thread.currentThread().getStackTrace()) {
+            String className = element.getClassName();
+            String methodName = element.getMethodName();
+            if ("io.papermc.paper.threadedregions.scheduler.FoliaGlobalRegionScheduler".equals(className)) {
+                return true;
+            }
+            if ("io.papermc.paper.threadedregions.RegionizedServer".equals(className)
+                    && "globalTick".equals(methodName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static String currentThreadName() {
         return Thread.currentThread().getName();
     }
@@ -2568,6 +2695,7 @@ public final class UnsafeCallBridge {
     private static void setBlockTypeAndRemember(Block block, Material material) {
         block.setType(material);
         rememberBlockType(block, material);
+        forgetBlockData(block);
     }
 
     private static void rememberBlockType(Block block, Material material) {
@@ -2579,6 +2707,30 @@ public final class UnsafeCallBridge {
     private static Material cachedBlockType(Block block) {
         String key = blockKey(block);
         return key == null ? null : BLOCK_TYPE_CACHE.get(key);
+    }
+
+    private static BlockData readBlockDataAndRemember(Block block) {
+        BlockData data = block.getBlockData();
+        rememberBlockData(block, data);
+        return data;
+    }
+
+    private static void rememberBlockData(Block block, BlockData data) {
+        String key = blockKey(block);
+        if (key == null || data == null) return;
+        BLOCK_DATA_CACHE.put(key, data);
+    }
+
+    private static BlockData cachedBlockData(Block block) {
+        String key = blockKey(block);
+        return key == null ? null : BLOCK_DATA_CACHE.get(key);
+    }
+
+    private static void forgetBlockData(Block block) {
+        String key = blockKey(block);
+        if (key != null) {
+            BLOCK_DATA_CACHE.remove(key);
+        }
     }
 
     private static String blockKey(Block block) {

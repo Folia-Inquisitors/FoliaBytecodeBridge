@@ -2,6 +2,7 @@ package dev.fbbprobe;
 
 import dev.fbbprobe.harness.ProbeActions;
 import dev.fbbprobe.harness.ProbeRuntime;
+import dev.fbbprobe.harness.GlobalModelProbeEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
@@ -32,10 +33,15 @@ import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
 public final class FbbProbeActions implements ProbeActions {
 
     @Override
     public void runStartupProbes(ProbeRuntime runtime) {
+        runGlobalModelProbes(runtime);
+
         if (Bukkit.getWorlds().isEmpty()) {
             runtime.probeBlocked("S_GLOBAL", "Bukkit#getWorlds",
                     "org.bukkit.Bukkit", "getWorlds", "()Ljava/util/List;",
@@ -103,6 +109,10 @@ public final class FbbProbeActions implements ProbeActions {
                 "(Lorg/bukkit/Location;)Lorg/bukkit/Chunk;", () -> world.getChunkAt(location));
         runtime.probe("C_REGION_BLOCK", "World#getChunkAt(Block)", "org.bukkit.World", "getChunkAt",
                 "(Lorg/bukkit/block/Block;)Lorg/bukkit/Chunk;", () -> world.getChunkAt(block));
+        runtime.probe("C_REGION_BLOCK", "Block#getType", "org.bukkit.block.Block", "getType",
+                "()Lorg/bukkit/Material;", () -> block.getType());
+        runtime.probe("C_REGION_BLOCK", "Block#getBlockData", "org.bukkit.block.Block", "getBlockData",
+                "()Lorg/bukkit/block/data/BlockData;", () -> block.getBlockData());
         runtime.probe("G_WORLD_SCAN_SPLIT", "World#getEntities", "org.bukkit.World", "getEntities",
                 "()Ljava/util/List;", () -> world.getEntities());
         runtime.probe("G_WORLD_SCAN_SPLIT", "World#getLoadedChunks", "org.bukkit.World", "getLoadedChunks",
@@ -143,6 +153,69 @@ public final class FbbProbeActions implements ProbeActions {
         runtime.probeBlocked("A_ENTITY", "Player-only startup probes",
                 "org.bukkit.entity.Player", "*", "player-required",
                 "startup-no-player", "use first-join or /fbbprobe matrix safe for player/entity paths");
+    }
+
+    private void runGlobalModelProbes(ProbeRuntime runtime) {
+        // Model probes are observation-only. They inventory common global/server APIs that appear in
+        // plugins, especially synchronous return paths, without claiming a bytecode rewrite is safe yet.
+        UUID missingUuid = UUID.nameUUIDFromBytes("fbbprobe-missing-player".getBytes(StandardCharsets.UTF_8));
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getOnlinePlayers",
+                "org.bukkit.Bukkit", "getOnlinePlayers", "()Ljava/util/Collection;",
+                "server-global", "Collection<Player>", true,
+                () -> "size=" + Bukkit.getOnlinePlayers().size());
+        runtime.probeModel("global-model", "S_GLOBAL", "Server#getWorlds",
+                "org.bukkit.Server", "getWorlds", "()Ljava/util/List;",
+                "server-global", "List<World>", true,
+                () -> "size=" + Bukkit.getServer().getWorlds().size()
+                        + " firstWorldPresent=" + !Bukkit.getServer().getWorlds().isEmpty());
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getPlayerExact(String)",
+                "org.bukkit.Bukkit", "getPlayerExact", "(Ljava/lang/String;)Lorg/bukkit/entity/Player;",
+                "server-global-player-lookup", "Player|null", true,
+                () -> "input=fbbprobe_missing_player found=" + (Bukkit.getPlayerExact("fbbprobe_missing_player") != null));
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getPlayer(UUID)",
+                "org.bukkit.Bukkit", "getPlayer", "(Ljava/util/UUID;)Lorg/bukkit/entity/Player;",
+                "server-global-player-lookup", "Player|null", true,
+                () -> "input=stable-missing-uuid found=" + (Bukkit.getPlayer(missingUuid) != null));
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getOfflinePlayer(UUID)",
+                "org.bukkit.Bukkit", "getOfflinePlayer", "(Ljava/util/UUID;)Lorg/bukkit/OfflinePlayer;",
+                "server-global-player-profile", "OfflinePlayer", true,
+                () -> "input=stable-missing-uuid namePresent=" + (Bukkit.getOfflinePlayer(missingUuid).getName() != null));
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getConsoleSender",
+                "org.bukkit.Bukkit", "getConsoleSender", "()Lorg/bukkit/command/ConsoleCommandSender;",
+                "server-global", "ConsoleCommandSender", false,
+                () -> "class=" + Bukkit.getConsoleSender().getClass().getName());
+        runtime.probeModel("global-model", "S_GLOBAL", "PluginManager#getPlugins",
+                "org.bukkit.plugin.PluginManager", "getPlugins", "()[Lorg/bukkit/plugin/Plugin;",
+                "server-global-plugin-registry", "Plugin[]", true,
+                () -> "size=" + Bukkit.getPluginManager().getPlugins().length);
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getPluginCommand(String)",
+                "org.bukkit.Bukkit", "getPluginCommand", "(Ljava/lang/String;)Lorg/bukkit/command/PluginCommand;",
+                "server-global-command-map", "PluginCommand|null", true,
+                () -> "input=fbbprobe found=" + (Bukkit.getPluginCommand("fbbprobe") != null));
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getBanList(Type)",
+                "org.bukkit.Bukkit", "getBanList", "(Lorg/bukkit/BanList$Type;)Lorg/bukkit/BanList;",
+                "server-global-ban-registry", "BanList", true,
+                () -> "type=PROFILE class=" + Bukkit.getBanList(org.bukkit.BanList.Type.PROFILE).getClass().getName());
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#getItemFactory",
+                "org.bukkit.Bukkit", "getItemFactory", "()Lorg/bukkit/inventory/ItemFactory;",
+                "server-global-item-registry", "ItemFactory", false,
+                () -> "class=" + Bukkit.getItemFactory().getClass().getName());
+        runtime.probeModel("global-model", "S_GLOBAL", "Bukkit#broadcastMessage(String)",
+                "org.bukkit.Bukkit", "broadcastMessage", "(Ljava/lang/String;)I",
+                "server-global-broadcast", "int", false,
+                () -> Bukkit.getOnlinePlayers().isEmpty()
+                        ? "message=fbbprobe_model_probe recipients=" + Bukkit.broadcastMessage("fbbprobe_model_probe")
+                        : "skipped=players-online reason=avoid-visible-test-message");
+
+        runtime.probeModel("event-model", "S_GLOBAL", "PluginManager#callEvent(Event)",
+                "org.bukkit.plugin.PluginManager", "callEvent", "(Lorg/bukkit/event/Event;)V",
+                "server-global-event-dispatch", "void", false,
+                () -> {
+                    GlobalModelProbeEvent event = new GlobalModelProbeEvent();
+                    Bukkit.getPluginManager().callEvent(event);
+                    return "event=" + event.getClass().getName()
+                            + " cancellable=false handlers=" + event.getHandlers().getRegisteredListeners().length;
+                });
     }
 
     @Override

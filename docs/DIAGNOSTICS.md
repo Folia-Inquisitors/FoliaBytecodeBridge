@@ -195,6 +195,21 @@ API is absent. The raw transformers can still cover exact bytecode shapes that
 do not need type resolution, and the ASM scanner records route-family evidence
 from the class bytes when they are readable.
 
+Before the typed Byte Buddy substitution pass runs, the bridge now performs a
+read-only raw bytecode candidate scan:
+
+```text
+[FBB candidate-scan] marker=typed-route-prescan-v1 class=<class> loader=<classloader> action=<observe-route-candidate|observe-no-route-candidate|observe-scan-unknown> category=<ROUTE_CANDIDATE|NO_REGISTERED_ROUTE_CANDIDATE|TYPE_METADATA_ONLY|SCAN_UNKNOWN> typedTransform=still-attempted reason=<asm summary or scan reason> note=diagnostic-bytecode-prescan-before-typed-transform
+```
+
+This marker is intentionally specific so noisy debug logs can be audited for
+false positives without hiding unknown route shapes. The scan never blocks the
+typed transform; `typedTransform=still-attempted` is printed on every line to
+make that clear. `TYPE_METADATA_ONLY` is a hint for custom event/annotation
+metadata classes that have no registered method-call route candidates but may
+still upset typed metadata inspection. It is diagnostic evidence, not a safety
+decision.
+
 Method-reference rewrites also have a narrow safety boundary. If an
 `invokedynamic` method reference captures a receiver as one Bukkit interface
 while the declared owner is another, the raw transformer logs:
@@ -458,6 +473,7 @@ Some return-value routes have a narrower model and avoid the blocked path:
 [FBB unsafe-call] api=World#getChunkAt(...) route=B_REGION_LOCATION ... fallback=loaded-chunk-index-return policy=sync-return-model result=<hit|miss>
 [FBB unsafe-call] api=World#getChunkAt(...) route=B_REGION_LOCATION ... policy=deferred-chunk-model action=async-preload-return-proxy result=proxy
 [FBB unsafe-call] api=Block#getType route=C_REGION_BLOCK ... fallback=block-material-cache policy=sync-return-model result=<hit|miss>
+[FBB unsafe-call] api=Block#getBlockData route=C_REGION_BLOCK ... fallback=block-data-cache policy=sync-return-model result=<hit|miss>
 [FBB unsafe-call] api=World#strikeLightning(Location) route=B_REGION_LOCATION ... fallback=deferred-lightning-proxy policy=deferred-proxy-return result=proxy
 [FBB unsafe-call] api=<boolean world effect> route=B_REGION_LOCATION ... fallback=preemptive-region-scheduler policy=deferred-accepted-boolean return=scheduled-true reason=boolean-route-no-safe-sync-return
 ```
@@ -470,10 +486,17 @@ preserves simple identity/coordinate reads immediately, delegates to the real
 chunk after preload, and logs `pending-result-default` if plugin code asks for
 chunk data before the preload completes. This is intentionally loud model
 evidence, not a claim that every `Chunk` method is safe while pending.
-`block-material-cache` is used only for `Block#getType()` after a prior
-owner-safe read or bridge-owned `Block#setType(Material)` has recorded the
-material for that block. A cache miss preserves the original direct failure, so
-new bytecode shapes still produce evidence instead of being guessed as `AIR`.
+`block-material-cache` and `block-data-cache` are used only for
+`Block#getType()` / `Block#getBlockData()` after a prior owner-safe read has
+recorded the block state. `Block#setType(Material)` also records the material
+and clears any stale block-data snapshot for that block. If either cache misses
+while the call is running inside Folia's global scheduler, the bridge logs
+`fallback=region-owned-sync-return policy=bounded-region-wait` with either
+`global-scheduler-block-read-cache-miss` or
+`global-scheduler-block-data-cache-miss`, then performs a bounded owner-region
+read. Other Folia owner threads still preserve the original direct failure on a
+cache miss, so new bytecode shapes keep producing evidence instead of being
+guessed as `AIR` or default block data.
 `deferred-lightning-proxy` is used for entity-returning lightning effects when a
 foreign/global Folia owner thread cannot safely wait for the target region. The
 actual region task still logs task/unsafe failures, and proxy method calls log

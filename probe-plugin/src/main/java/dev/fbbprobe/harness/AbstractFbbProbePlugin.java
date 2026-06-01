@@ -424,6 +424,29 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     }
 
     @Override
+    public final void probeModel(String group, String route, String api, String owner, String name, String descriptor,
+                                 String ownerHint, String returnType, boolean syncReturnRisk, ProbeValueCall call) {
+        ProbePath path = new ProbePath(rootCommand(), bridgeRole(), activeProbeMode.get(), activeProbeContext.get(),
+                route, api, owner, name, descriptor, null);
+        String prefix = "[FBB probe-model] " + path.format()
+                + " group=" + group
+                + " status=probe-only rewrite=false"
+                + " ownerHint=" + ownerHint
+                + " return=" + returnType
+                + " syncReturnRisk=" + syncReturnRisk;
+        try {
+            String detail = call.run();
+            probeInfo(prefix + " result=completed" + (detail == null || detail.isBlank() ? "" : " " + detail));
+        } catch (Throwable throwable) {
+            probeLog(Level.WARNING,
+                    prefix + " result=failed throwable="
+                            + throwable.getClass().getName() + ": " + throwable.getMessage()
+                            + " " + failureFingerprint(throwable) + controlEvidence(),
+                    throwable);
+        }
+    }
+
+    @Override
     public final void probeBlocked(String route, String api, String owner, String name, String descriptor,
                                    String blockedBy, String reason) {
         ProbePath path = new ProbePath(rootCommand(), bridgeRole(), activeProbeMode.get(), activeProbeContext.get(),

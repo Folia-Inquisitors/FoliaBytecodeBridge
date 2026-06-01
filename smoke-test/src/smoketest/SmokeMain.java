@@ -430,6 +430,8 @@ public final class SmokeMain {
                 "(Lorg/bukkit/potion/PotionEffectType;)V");
         requireRoute(report, RouteFamily.C_REGION_BLOCK, "org/bukkit/block/Block", "getType",
                 "()Lorg/bukkit/Material;");
+        requireRoute(report, RouteFamily.C_REGION_BLOCK, "org/bukkit/block/Block", "getBlockData",
+                "()Lorg/bukkit/block/data/BlockData;");
         requireRoute(report, RouteFamily.C_REGION_BLOCK, "org/bukkit/block/Block", "setType",
                 "(Lorg/bukkit/Material;)V");
         requireRoute(report, RouteFamily.G_WORLD_SCAN_SPLIT, "org/bukkit/World", "getEntities",

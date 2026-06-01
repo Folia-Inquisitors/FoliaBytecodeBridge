@@ -300,6 +300,18 @@ final class BridgeDiagnostics {
                 + " asm=" + asmRouteSummary);
     }
 
+    static void typedRouteCandidateScan(String className, ClassLoader classLoader,
+                                        TypedRouteCandidateReporter.CandidateReport report) {
+        info("[FBB candidate-scan] marker=" + report.marker()
+                + " class=" + className
+                + " loader=" + loaderName(classLoader)
+                + " action=" + report.action()
+                + " category=" + report.category()
+                + " typedTransform=still-attempted"
+                + " reason=" + report.reason()
+                + " note=diagnostic-bytecode-prescan-before-typed-transform");
+    }
+
     static void transformError(String className, Throwable throwable) {
         log(Level.WARNING, "[FBB transform-error] class=" + className + " message="
                 + throwable.getMessage(), throwable);

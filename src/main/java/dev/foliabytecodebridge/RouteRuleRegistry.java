@@ -39,6 +39,7 @@ final class RouteRuleRegistry {
     }
 
     private static final String BLOCK = "Lorg/bukkit/block/Block;";
+    private static final String BLOCK_DATA = "Lorg/bukkit/block/data/BlockData;";
     private static final String CAUSE = "Lorg/bukkit/event/player/PlayerTeleportEvent$TeleportCause;";
     private static final String CHAT_COLOR = "Lorg/bukkit/ChatColor;";
     private static final String CHUNK = "Lorg/bukkit/Chunk;";
@@ -458,6 +459,11 @@ final class RouteRuleRegistry {
                 "blockGetType", "(" + BLOCK + ")" + MATERIAL,
                 ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
                 "block material read owns block region");
+        add("org/bukkit/block/Block", "getBlockData", "()" + BLOCK_DATA,
+                RouteFamily.C_REGION_BLOCK, "CraftBlock#block-read",
+                "blockGetBlockData", "(" + BLOCK + ")" + BLOCK_DATA,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "block data read owns block region; live visualization paths commonly call this after scheduler hops");
         add("org/bukkit/block/Block", "setType", "(" + MATERIAL + ")V",
                 RouteFamily.C_REGION_BLOCK, "CraftBlock#block-mutation",
                 "blockSetType", "(" + BLOCK + MATERIAL + ")V",

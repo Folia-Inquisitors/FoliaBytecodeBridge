@@ -186,6 +186,11 @@ public final class FoliaBytecodeBridgeAgent {
                 return builder;
             }
 
+            TypedRouteCandidateReporter.CandidateReport candidateReport =
+                    TypedRouteCandidateReporter.inspect(
+                            TypedRouteCandidateReporter.TypeName.of(typeDescription.getName()), classLoader);
+            BridgeDiagnostics.typedRouteCandidateScan(typeDescription.getName(), classLoader, candidateReport);
+
             // Keep substitutions grouped by source API so the matrix in docs/TRANSFORM_MATRIX.md stays easy to audit.
             return builder
                     .visit(replaceBukkitSchedulerCalls().on(any()))
@@ -747,6 +752,10 @@ public final class FoliaBytecodeBridgeAgent {
                         .and(named("getType"))
                         .and(takesArguments(0)))
                 .replaceWith(UnsafeCallBridge.class.getMethod("blockGetType", Block.class))
+                .method(isDeclaredBy(named("org.bukkit.block.Block"))
+                        .and(named("getBlockData"))
+                        .and(takesArguments(0)))
+                .replaceWith(UnsafeCallBridge.class.getMethod("blockGetBlockData", Block.class))
                 .method(isDeclaredBy(named("org.bukkit.block.Block"))
                         .and(named("getLocation"))
                         .and(takesArguments(0)))

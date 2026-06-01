@@ -356,6 +356,10 @@ final class SmokeTarget {
         } catch (NullPointerException expected) {
         }
         try {
+            block.getBlockData();
+        } catch (NullPointerException expected) {
+        }
+        try {
             block.setType(Material.STONE);
         } catch (NullPointerException expected) {
         }

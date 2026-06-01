@@ -22,7 +22,7 @@ The smoke test scans `smoketest/SmokeTarget.class` and asserts representative
 hits for:
 
 - `A_ENTITY`: player potion effect add/remove.
-- `C_REGION_BLOCK`: `Block#getType()` and `Block#setType(Material)`.
+- `C_REGION_BLOCK`: `Block#getType()`, `Block#getBlockData()`, and `Block#setType(Material)`.
 - `G_WORLD_SCAN_SPLIT`: whole-world entity scan.
 - `D_PLAYER_UI`: detached scoreboard creation.
 - `S_GLOBAL`: command dispatch.

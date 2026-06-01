@@ -1,5 +1,52 @@
 # Smoke Test Result
 
+## 2026-06-01 - C_REGION_BLOCK BlockData Read
+
+Live claim-style visualization evidence moved from the already-routed
+`Block#getType()` path to the neighboring generic bytecode shape:
+
+```text
+BukkitScheduler#scheduleSyncDelayedTask -> S_GLOBAL
+Block#getBlockData -> C_REGION_BLOCK
+```
+
+The bridge now registers and rewrites `Block#getBlockData()` as a block-owned
+sync-return route. Its diagnostics use `fallback=block-data-cache` and
+`reason=global-scheduler-block-data-cache-miss` so this path can be separated
+from the older material-read route in debug logs.
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=207 rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=102 routeRules=87
+```
+
+## 2026-06-01 - C_REGION_BLOCK Global-Scheduler Sync Return
+
+Live claim-style visualization evidence showed this generic bytecode path:
+
+```text
+BukkitScheduler#scheduleSyncDelayedTask -> S_GLOBAL
+Block#getType -> C_REGION_BLOCK
+```
+
+The delayed task ran on Folia's global scheduler and then performed a
+block-owned synchronous material read. The old `Block#getType` cache-miss branch
+preserved the original direct call, which kept the Folia owner failure visible
+but did not translate the return path.
+
+The bridge now treats a `Block#getType` cache miss from a detected Folia global
+scheduler context as `fallback=region-owned-sync-return
+policy=bounded-region-wait`, then reads on the block owner region. Other Folia
+owner threads keep the old loud direct-preserve behavior to avoid guessing a
+cross-owner wait.
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=205 rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=101 routeRules=86
+```
+
 ## 2026-05-31 - Direct NMS Server Executor Global Route
 
 The latest live trace showed `MinecraftServer#execute(Runnable)` being called

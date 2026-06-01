@@ -132,7 +132,9 @@ mode=startup contexts=global,async,region
 ```
 
 This intentionally covers every current probe that can be called without a
-player: `Bukkit#getWorlds`, `Bukkit#dispatchCommand`, unowned scoreboard manager
+player: global/server model candidates such as `Bukkit#getOnlinePlayers`,
+`Server#getWorlds`, player/profile lookups, plugin/command/ban/item registries,
+`PluginManager#callEvent`, `Bukkit#dispatchCommand`, unowned scoreboard manager
 paths, detached scoreboard model paths, objective/score display-state mutations,
 team display/style/friendly-flag mutations, main-scoreboard lookup, world/chunk
 reads, typed world scans, chunk scans, chunk load/refresh probes, sound
@@ -140,6 +142,18 @@ overloads, and zero-power explosions.
 Player/entity methods still need first-join or manual commands because bytecode
 needs an actual entity owner. The startup bucket is the place to add future
 no-player evidence instead of adding more commands.
+
+Unproven global/server candidates use `[FBB probe-model]` instead of normal
+rewrite probes:
+
+```text
+[FBB probe-model] group=global-model route=S_GLOBAL api=Bukkit#getOnlinePlayers status=probe-only rewrite=false ownerHint=server-global return=Collection<Player> syncReturnRisk=true result=completed size=<n>
+[FBB probe-model] group=event-model route=S_GLOBAL api=PluginManager#callEvent(Event) status=probe-only rewrite=false ownerHint=server-global-event-dispatch return=void syncReturnRisk=false result=<completed|failed> event=dev.fbbprobe.harness.GlobalModelProbeEvent ...
+```
+
+These lines are classification evidence only. They do not mean the bridge has
+promoted a rewrite for sync-return APIs such as `getOnlinePlayers`,
+`getWorlds`, `getPlayer`, or event dispatch.
 
 Startup probing can be changed with JVM properties:
 
@@ -156,6 +170,22 @@ Console can manually rerun the boot-safe set:
 /fbbprobe startup
 /fbbprobecontrol startup
 ```
+
+## Building Probe Jars
+
+Build the bridge jar first, then build the optional probe jars with the JDK jar
+tool:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build-probes.ps1 -ServerRoot "<throwaway Folia server root>"
+```
+
+Do not package probe jars with generic zip tooling such as PowerShell
+`Compress-Archive`. A live smoke run showed those archives can list the expected
+class entries but still fail Folia's plugin classloader with `Cannot find main
+class`. The helper compiles against the server libraries and packages
+`FBBProbe.jar` / `FBBProbeControl.jar` with `jar.exe`, then the main classes can
+be verified with `javap` if a load issue appears again.
 
 The control jar runs the same calls from an ignored package so raw Folia
 failures can be compared against the transformed probe. In evidence summaries,
@@ -203,7 +233,7 @@ unless explicitly enabled:
 | --- | --- |
 | `A_ENTITY` | `Player#getLocation`, `Player#getWorld`, `Player#teleport(Location)`, `Player#teleport(Location,TeleportCause)`, `Player#setVelocity`, `Player#setGameMode`, `Entity#setVelocity`, `HumanEntity#setGameMode`, `LivingEntity#addPotionEffect`, `LivingEntity#removePotionEffect`, `Player#playSound` |
 | `B_REGION_LOCATION` | `World#getBlockAt(Location)`, `World#getChunkAt(int,int)`, `World#getChunkAt(Location)`, `World#strikeLightning`, `World#strikeLightningEffect`, `World#createExplosion`, `World#dropItem`, `World#spawnEntity`, `World#generateTree` |
-| `C_REGION_BLOCK` | `World#getBlockAt(int,int,int)`, `World#getChunkAt(Block)`, `Block#getLocation`, `Block#getType`, `Block#setType(Material)` |
+| `C_REGION_BLOCK` | `World#getBlockAt(int,int,int)`, `World#getChunkAt(Block)`, `Block#getLocation`, `Block#getType`, `Block#getBlockData`, `Block#setType(Material)` |
 | `D_PLAYER_UI` | Startup: scoreboard manager/main-scoreboard factory paths. Player-owned: `Player#openInventory`, `Player#closeInventory`, `HumanEntity#openInventory`, `HumanEntity#closeInventory`, player scoreboard calls. |
 | `F_PLAYER_VISIBILITY` | `Player#hidePlayer`, `Player#showPlayer` |
 | `G_WORLD_SCAN_SPLIT` | `Player#getNearbyEntities`, `World#getEntities`, `World#getLoadedChunks`, `World#getNearbyEntities`, `World#getEntitiesByClass`, `World#getEntitiesByClasses`, `Chunk#getEntities` |

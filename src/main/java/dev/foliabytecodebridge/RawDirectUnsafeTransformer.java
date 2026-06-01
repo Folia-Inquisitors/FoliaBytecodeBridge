@@ -39,6 +39,7 @@ final class RawDirectUnsafeTransformer implements ClassFileTransformer {
     private static final String CLASS_ARRAY = "[Ljava/lang/Class;";
     private static final String TREE_TYPE = "Lorg/bukkit/TreeType;";
     private static final String MATERIAL = "Lorg/bukkit/Material;";
+    private static final String BLOCK_DATA = "Lorg/bukkit/block/data/BlockData;";
     private static final String POTION_EFFECT = "Lorg/bukkit/potion/PotionEffect;";
     private static final String POTION_EFFECT_TYPE = "Lorg/bukkit/potion/PotionEffectType;";
     private static final String PLAYER = "Lorg/bukkit/entity/Player;";
@@ -517,6 +518,11 @@ final class RawDirectUnsafeTransformer implements ClassFileTransformer {
                 return new Replacement(RouteFamily.C_REGION_BLOCK, "CraftBlock#block-read",
                         "blockGetType", "(" + BLOCK + ")" + MATERIAL,
                         "rewritten: block type read can route through the owning region scheduler");
+            }
+            if ("getBlockData".equals(name) && ("()" + BLOCK_DATA).equals(descriptor)) {
+                return new Replacement(RouteFamily.C_REGION_BLOCK, "CraftBlock#block-read",
+                        "blockGetBlockData", "(" + BLOCK + ")" + BLOCK_DATA,
+                        "rewritten: block data read can route through the owning region scheduler");
             }
             if ("setType".equals(name) && ("(" + MATERIAL + ")V").equals(descriptor)) {
                 return new Replacement(RouteFamily.C_REGION_BLOCK, "CraftBlock#block-mutation",
