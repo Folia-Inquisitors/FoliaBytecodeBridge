@@ -6,7 +6,7 @@ Experimental Bukkit/Folia plugin plus Java agent that rewrites common legacy Buk
 
 https://discord.gg/aT9z7q7hX8
 
-## Buildinghttps://github.com/Folia-Inquisitors/FoliaBytecodeBridge/blob/master/README.md
+## Building instructions
 
 ```bash
 mvn clean install
