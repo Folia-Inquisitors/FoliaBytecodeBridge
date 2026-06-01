@@ -6,21 +6,11 @@ Experimental Bukkit/Folia plugin plus Java agent that rewrites common legacy Buk
 
 https://discord.gg/aT9z7q7hX8
 
-## Building
+## Buildinghttps://github.com/Folia-Inquisitors/FoliaBytecodeBridge/blob/master/README.md
 
 ```bash
 mvn clean install
 ```
-
-## Usage
-
-Place the built jar in `plugins/`, then start Folia with the same jar as a Java agent:
-
-```bash
-java -javaagent:plugins/FoliaBytecodeBridge.jar -jar folia.jar
-```
-
-Loading the jar only as a plugin will not rewrite other plugin bytecode.
 
 ## Disclaimer
 
