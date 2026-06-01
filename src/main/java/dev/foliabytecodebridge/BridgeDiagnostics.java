@@ -524,13 +524,20 @@ final class BridgeDiagnostics {
 
     private static boolean shouldPrintToConsole(Level level, String line) {
         if (BridgeConfig.consoleVerbose()) return true;
+
+        // These are high-volume evidence channels. They are intentionally kept
+        // in debug.log so console output stays readable during live testing.
+        if (line.startsWith("[FBB transform-skip]")
+                || line.startsWith("[FBB model-summary]")
+                || line.startsWith("[FBB repeat-summary]")) {
+            return false;
+        }
+
         if (level.intValue() >= Level.WARNING.intValue()) return true;
         return line.startsWith("[FBB build]")
                 || line.startsWith("[FBB attach]")
                 || line.startsWith("[FBB agent-classpath]")
-                || line.startsWith("[FBB metadata]")
-                || line.startsWith("[FBB model-summary]")
-                || line.startsWith("[FBB repeat-summary]");
+                || line.startsWith("[FBB metadata]");
     }
 
     private static void logRepeated(String channel, String key, String line) {
