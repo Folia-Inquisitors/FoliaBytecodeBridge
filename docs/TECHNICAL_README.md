@@ -47,8 +47,6 @@ On normal Paper/Spigot, calls pass through to the original Bukkit scheduler.
 - [Operations notes](OPERATIONS.md) cover startup, testing, and failure reading.
 - [Smoke test result](SMOKE_RESULT.md) records the local Java-agent smoke test.
 - [Transform matrix](TRANSFORM_MATRIX.md) lists every supported rewrite.
-- [kit plugin reference audit](target-audits/kit plugin reference.md) records the observed scheduler, inventory, and effect risks.
-- [EssentialsX audit](target-audits/EssentialsX.md) records the observed scheduler-wrapper and world-effect risks.
 - [Folia 1.20 reference notes](target-audits/Folia-1.20-reference.md) record the historical scheduler-route evidence from the older Folia zip.
 
 ## What it cannot guarantee
