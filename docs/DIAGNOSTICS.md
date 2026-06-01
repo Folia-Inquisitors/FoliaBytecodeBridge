@@ -123,6 +123,12 @@ repeatDiagnosticEvery=100
 
 The same diagnostic keys can be written without the `foliabytecodebridge.` prefix in `plugins/FoliaBytecodeBridge/config.properties`; for example `traceSchedulerCalls=true`.
 
+If `plugins/FoliaBytecodeBridge/config.properties` is missing, FBB regenerates
+it on first config load. The generated file uses the experimental test-server
+defaults: full diagnostics go to `debug.log`, console remains summarized, and
+`metadataOverlay=all` is enabled so legacy plugins can reach the transformer.
+JVM `-Dfoliabytecodebridge.*` properties still override the regenerated file.
+
 ## Attach Logs
 
 Shape:

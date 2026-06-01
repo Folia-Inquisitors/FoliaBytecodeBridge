@@ -2,6 +2,7 @@ package dev.foliabytecodebridge;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -10,6 +11,31 @@ final class BridgeConfig {
 
     private static final String PREFIX = "foliabytecodebridge.";
     private static final Path DEFAULT_CONFIG_PATH = Path.of("plugins", "FoliaBytecodeBridge", "config.properties");
+    private static final String DEFAULT_CONFIG = """
+            # FoliaBytecodeBridge config
+            # Full route/bytecode/probe evidence is collected in debug.log by default.
+            # Set consoleVerbose=true only for a short focused console capture.
+            enabled=true
+            forceTranslation=true
+            metadataOverlay=all
+
+            debugFile=true
+            debugFileVerbose=true
+            debugFilePath=plugins/FoliaBytecodeBridge/debug.log
+            consoleVerbose=false
+
+            debug=false
+            traceTransforms=false
+            traceBytecodePaths=false
+            traceGuardPaths=false
+            traceSchedulerCalls=false
+            traceUnsafeCalls=false
+
+            modelReports=true
+            modelSummaryIntervalSeconds=30
+            repeatDiagnosticFirstLines=3
+            repeatDiagnosticEvery=100
+            """;
     private static final Properties FILE_PROPERTIES = new Properties();
     private static volatile boolean loaded;
 
@@ -19,6 +45,7 @@ final class BridgeConfig {
     static synchronized void load() {
         if (loaded) return;
         Path path = configPath();
+        ensureConfigFile(path);
         if (Files.isRegularFile(path)) {
             try (InputStream inputStream = Files.newInputStream(path)) {
                 FILE_PROPERTIES.load(inputStream);
@@ -27,6 +54,23 @@ final class BridgeConfig {
             }
         }
         loaded = true;
+    }
+
+    private static void ensureConfigFile(Path path) {
+        if (!DEFAULT_CONFIG_PATH.equals(path) || Files.exists(path)) return;
+        try {
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(path, DEFAULT_CONFIG, StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            // The bridge can still run with built-in defaults or JVM properties.
+            // This warning exists only to explain why the editable config did
+            // not appear on disk during early javaagent startup.
+            System.err.println("[FoliaBytecodeBridge] Could not create default config "
+                    + PrivacySanitizer.text(path.toString()) + ": " + exception.getMessage());
+        }
     }
 
     static boolean enabled() {

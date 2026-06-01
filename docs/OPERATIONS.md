@@ -44,6 +44,12 @@ To let every legacy plugin pass Folia's `folia-supported` metadata gate on an ex
 metadataOverlay=all
 ```
 
+If the default config file is missing, FBB regenerates
+`plugins/FoliaBytecodeBridge/config.properties` during early startup and writes
+the experimental defaults used by the live test harness, including
+`metadataOverlay=all`, `debugFile=true`, `debugFileVerbose=true`, and
+`consoleVerbose=false`. JVM properties still win over the regenerated file.
+
 This overlay requires the `-javaagent` startup path for plugins that would otherwise be rejected before Bukkit loads them. It logs `[FBB metadata]` once for the patched metadata class and scans plugin jars up front with `result=already-supported` or `result=overlay-will-force-true`. Treat that as "the transformer got a chance to work," not as proof that the plugin is thread-safe.
 
 ## Expected Startup
