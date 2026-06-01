@@ -1,6 +1,6 @@
 # FoliaBytecodeBridge
 
-Experimental Bukkit/Folia plugin that rewrites common Bukkit bytecode shapes into Folia ownership routes.
+Experimental plugin that reroutes unsafe Bukkit/Paper plugin calls to Folia-safe scheduler, entity, and region ownership paths.
 
 ## Building instructions
 
