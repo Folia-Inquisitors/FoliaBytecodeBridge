@@ -23,7 +23,7 @@ The previous detailed README was preserved at [`docs/TECHNICAL_README.md`](docs/
 
 This project is experimental. It can help test legacy plugin compatibility on Folia, but it does not prove that any plugin is region-thread safe.
 
-AI assistance was used during development, testing, and documentation.
+AI  was used during development, testing, and documentation.
 
 
 ## Folia Inquisitors
