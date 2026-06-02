@@ -1,5 +1,112 @@
 # Smoke Test Result
 
+## 2026-06-02 - Synthetic Multi-Region Mutation Executor Phase 5B
+
+Added a guarded executor for exact synthetic multi-region mutation contracts.
+The executor is disabled by default on live servers with
+`syntheticMutationExecutor=false`; disabled paths stay serialized and emit
+`reason=executor-disabled` instead of pretending the mutation is safe.
+
+Smoke enables only the deterministic inline test property:
+
+```text
+foliabytecodebridge.smokeSyntheticMutationExecutor=true
+```
+
+Expected evidence:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent route=C_REGION_BLOCK result=completed reason=verified scheduledOwners=2 completedOwners=2 prepareHook=prepareMutation applyHook=applyOwnerMutation verifyHook=verifyAggregateMutation mode=smoke-inline
+```
+
+The smoke event records hook effects so the test proves prepare/apply/apply/
+verify ordering:
+
+```text
+multiRegionMutationContractEvidence=multi-region-mutation-contract-ready-and-executed effects=prepare,apply:12,12,apply:48,12,verify:2/2
+```
+
+Smoke also covers negative exact-contract outcomes:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=prepare-returned-false prepareHook=prepareMutation
+[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=verify-returned-false scheduledOwners=2 completedOwners=2 verifyHook=verifyAggregateMutation mode=smoke-inline
+```
+
+Those checks prove the executor does not silently continue after a failed
+prepare or failed aggregate verify.
+
+This is still not a generic multi-region write solution. Missing hooks, false
+verification, absent owner anchors, live scheduling failures, and timeouts
+remain visible under `[FBB synthetic-multi-region] phase=execute-mutation`.
+
+Live throwaway-server test with `syntheticMutationExecutor=true`:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation event=dev.fbbprobe.harness.SharedBlockCollectionProbeEvent route=C_REGION_BLOCK result=scheduled scheduledOwners=2 prepareHook=prepareMutation applyHook=applyOwnerMutation verifyHook=verifyAggregateMutation action=owner-apply-tasks mode=nonblocking
+[FBB synthetic-multi-region] phase=execute-mutation event=dev.fbbprobe.harness.SharedBlockCollectionProbeEvent route=C_REGION_BLOCK result=completed reason=verified scheduledOwners=2 completedOwners=2 prepareHook=prepareMutation applyHook=applyOwnerMutation verifyHook=verifyAggregateMutation action=two-phase-mutation-executor mode=nonblocking
+```
+
+The live path proved the guarded executor can leave the serialized synthetic
+model for an exact contract and schedule per-owner region work without blocking
+the caller. The noisy raw Folia failures in the same `latest.log` were from
+`FBBProbeControl`, which is the expected untransformed baseline.
+
+## 2026-06-02 - Synthetic Multi-Region Detection Phase 1
+
+Added detection-only evidence for synthetic custom events that expose more than
+one block/chunk owner through a block collection. The route is not promoted yet:
+the event remains serialized, and the new line records owner-set evidence for
+future split/read or two-phase mutation modeling.
+
+Expected evidence:
+
+```text
+[FBB synthetic-multi-region] phase=detect event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent route=C_REGION_BLOCK owners=2 result=observed-not-promoted
+[FBB synthetic-event-state] action=serialized event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent
+[FBB synthetic-owner-miss] event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent ... getBlocks:multi-region-collection
+```
+
+This is phase 1 only: no region freeze, no split/aggregate, and no multi-region
+mutation routing.
+
+## 2026-06-02 - Synthetic Listener Concurrency Phase 5A
+
+The synthetic listener dispatcher now wraps listener execution with a re-entry
+detector. Smoke overlaps the same synthetic event/listener key on two threads
+and expects:
+
+```text
+[FBB synthetic-concurrency] phase=5A action=reentered event=smoketest.SyntheticConcurrencyEvent route=none routeFamily=UNKNOWN result=compatibility-sensitive
+```
+
+This is detection only. It marks the path as compatibility-sensitive evidence;
+it does not promote a route and does not silence listener failures.
+
+Follow-up hardening on 2026-06-02 moved smoke through
+`SyntheticEventPathBridge#probeListenerReentry(...)`, the same diagnostic-only
+hook used by the live target probe. Smoke now also checks:
+
+```text
+activePath=diagnostic-probe:smoke-phase-5a
+currentPath=diagnostic-probe:smoke-phase-5a
+```
+
+That proves the log points at both the already-active listener path and the
+current re-entry path.
+
+## 2026-06-02 - Synthetic Multi-Region Read Split Phase 2
+
+Read-only synthetic multi-region events now get a narrow owner read pass. Smoke
+uses a multi-block collection event with `isReadOnly() == true` and expects:
+
+```text
+[FBB synthetic-multi-region] phase=split-read event=smoketest.SmokeTarget$SmokeReadOnlyMultiBlockCollectionOwnedEvent route=C_REGION_BLOCK operation=read-only readOnly=true result=aggregated completedOwners=2
+```
+
+The listener chain is not replayed per region. Unknown multi-block events still
+emit `operation=read-or-write-unknown` and remain serialized.
+
 ## 2026-06-02 - Delegated Original Event Owner Route
 
 Custom wrapper events can now borrow an owner from `getOriginalEvent()` when the
@@ -628,6 +735,62 @@ Result:
 ```text
 SMOKE_OK bridgeCalls=22 unsafeCalls=95 bytecodeJars=2 bytecodeClasses=2394 bytecodeRequiredHits=79 knownGapHits={world-spawnEntity=2} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=1
 ```
+
+## Synthetic Phase 4 Contract Readiness Smoke
+
+Last local smoke run: 2026-06-02
+
+The smoke suite now covers both sides of the multi-region mutation contract
+model:
+
+```text
+[FBB synthetic-multi-region] phase=contract-mutation result=blocked reason=missing-two-phase-contract
+[FBB synthetic-multi-region] phase=contract-mutation result=ready-not-executed contract=prepare,owner-apply,aggregate-verify
+```
+
+This verifies that explicit mutation events without prepare/owner-apply/verify
+markers remain serialized, while events that expose all three markers are only
+classified as ready for a future exact synthetic model. No multi-region write,
+region freeze, or listener replay is executed by this smoke path.
+
+## Synthetic Multi-Region Read Split Smoke
+
+Last local smoke run: 2026-06-02
+
+The synthetic read-only event path now proves a narrow phase-2 split/aggregate
+model:
+
+```text
+multiRegionReadSplitEvidence=multi-region-read-only-split-aggregated
+```
+
+The local smoke harness uses `mode=smoke-inline` for deterministic assertion.
+Live Folia runs use `mode=nonblocking`: the bridge logs `result=scheduled`
+first, then records `result=aggregated` or a preserved failure from the
+completion callback. This avoids blocking a scheduler or owner thread while
+waiting on other region-owned reads.
+
+## Synthetic Multi-Region Mutation Plan Smoke
+
+Last local smoke run: 2026-06-02
+
+Phase 3 records explicit mutation intent without executing a multi-region
+write:
+
+```text
+multiRegionMutationPlanEvidence=multi-region-mutation-planned-not-executed
+```
+
+Smoke verifies both sides:
+
+```text
+[FBB synthetic-multi-region] phase=plan-mutation result=blocked reason=no-explicit-mutation-intent
+[FBB synthetic-multi-region] phase=plan-mutation result=planned-not-executed phases=prepare,owner-apply,aggregate-verify
+```
+
+This is intentionally conservative. It does not freeze regions, replay
+listeners, or mutate blocks; it only records enough owner and mutation-intent
+evidence for a future exact model.
 
 ## Control Baseline Evidence Split
 

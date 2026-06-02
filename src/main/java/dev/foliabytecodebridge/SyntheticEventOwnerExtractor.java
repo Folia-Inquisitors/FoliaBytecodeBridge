@@ -9,7 +9,9 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -57,36 +59,43 @@ final class SyntheticEventOwnerExtractor {
             "getOriginalEvent"
     );
 
+    private static final Set<String> READ_ONLY_GETTER_NAMES = Set.of(
+            "isReadOnly",
+            "readOnly",
+            "isReadOnlyEvent"
+    );
+
     private SyntheticEventOwnerExtractor() {
     }
 
     static OwnerScan scan(Event event) {
         List<OwnerMiss> misses = new ArrayList<>();
+        List<MultiRegionObservation> multiRegionObservations = new ArrayList<>();
         if (event == null) {
             misses.add(new OwnerMiss("event", "none", "null-event", "event=null"));
-            return new OwnerScan(null, null, null, misses);
+            return new OwnerScan(null, null, null, misses, multiRegionObservations);
         }
 
         EntityOwner entityOwner = entityOwner(event, misses);
         if (entityOwner != null) {
-            return new OwnerScan(entityOwner, null, null, misses);
+            return new OwnerScan(entityOwner, null, null, misses, multiRegionObservations);
         }
 
-        BlockOwner blockOwner = blockOwner(event, misses);
+        BlockOwner blockOwner = blockOwner(event, misses, multiRegionObservations);
         if (blockOwner != null) {
-            return new OwnerScan(null, blockOwner, null, misses);
+            return new OwnerScan(null, blockOwner, null, misses, multiRegionObservations);
         }
 
         LocationOwner locationOwner = locationOwner(event, misses);
         if (locationOwner != null) {
-            return new OwnerScan(null, null, locationOwner, misses);
+            return new OwnerScan(null, null, locationOwner, misses, multiRegionObservations);
         }
 
-        OwnerScan originalEventScan = originalEventOwnerScan(event, misses);
+        OwnerScan originalEventScan = originalEventOwnerScan(event, misses, multiRegionObservations);
         if (originalEventScan != null && originalEventScan.hasOwner()) {
             return originalEventScan;
         }
-        return new OwnerScan(null, null, null, misses);
+        return new OwnerScan(null, null, null, misses, multiRegionObservations);
     }
 
     static EntityOwner entityOwner(Event event) {
@@ -134,7 +143,8 @@ final class SyntheticEventOwnerExtractor {
         return null;
     }
 
-    private static BlockOwner blockOwner(Event event, List<OwnerMiss> misses) {
+    private static BlockOwner blockOwner(Event event, List<OwnerMiss> misses,
+                                         List<MultiRegionObservation> multiRegionObservations) {
         boolean sawCandidate = false;
         for (String name : BLOCK_GETTER_NAMES) {
             BlockOwner owner = singleBlockOwner(event, name, misses);
@@ -142,7 +152,7 @@ final class SyntheticEventOwnerExtractor {
             if (owner != null) return owner;
         }
         for (String name : BLOCK_COLLECTION_GETTER_NAMES) {
-            BlockOwner owner = blockCollectionOwner(event, name, misses);
+            BlockOwner owner = blockCollectionOwner(event, name, misses, multiRegionObservations);
             sawCandidate = sawCandidate || owner != null || hasMethodNamed(event, name);
             if (owner != null) return owner;
         }
@@ -168,7 +178,8 @@ final class SyntheticEventOwnerExtractor {
         return null;
     }
 
-    private static OwnerScan originalEventOwnerScan(Event event, List<OwnerMiss> misses) {
+    private static OwnerScan originalEventOwnerScan(Event event, List<OwnerMiss> misses,
+                                                    List<MultiRegionObservation> multiRegionObservations) {
         // Some custom events are only wrappers. If they expose the original
         // Bukkit event, borrow ownership from that original event instead of
         // guessing from wrapper-only data such as World.
@@ -201,7 +212,8 @@ final class SyntheticEventOwnerExtractor {
                                 "event=" + event.getClass().getName()));
                         continue;
                     }
-                    OwnerScan scan = directOwnerScan(originalEvent, "delegate:" + name + ".", misses);
+                    OwnerScan scan = directOwnerScan(originalEvent, "delegate:" + name + ".",
+                            misses, multiRegionObservations);
                     if (scan.hasOwner()) return scan;
                     misses.add(new OwnerMiss("delegate", name, "original-event-owner-missed",
                             "event=" + originalEvent.getClass().getName()));
@@ -214,14 +226,21 @@ final class SyntheticEventOwnerExtractor {
         return null;
     }
 
-    private static OwnerScan directOwnerScan(Event event, String methodPrefix, List<OwnerMiss> misses) {
+    private static OwnerScan directOwnerScan(Event event, String methodPrefix, List<OwnerMiss> misses,
+                                             List<MultiRegionObservation> multiRegionObservations) {
         EntityOwner entityOwner = directEntityOwner(event, methodPrefix, misses);
-        if (entityOwner != null) return new OwnerScan(entityOwner, null, null, misses);
-        BlockOwner blockOwner = directBlockOwner(event, methodPrefix, misses);
-        if (blockOwner != null) return new OwnerScan(null, blockOwner, null, misses);
+        if (entityOwner != null) {
+            return new OwnerScan(entityOwner, null, null, misses, multiRegionObservations);
+        }
+        BlockOwner blockOwner = directBlockOwner(event, methodPrefix, misses, multiRegionObservations);
+        if (blockOwner != null) {
+            return new OwnerScan(null, blockOwner, null, misses, multiRegionObservations);
+        }
         LocationOwner locationOwner = directLocationOwner(event, methodPrefix, misses);
-        if (locationOwner != null) return new OwnerScan(null, null, locationOwner, misses);
-        return new OwnerScan(null, null, null, misses);
+        if (locationOwner != null) {
+            return new OwnerScan(null, null, locationOwner, misses, multiRegionObservations);
+        }
+        return new OwnerScan(null, null, null, misses, multiRegionObservations);
     }
 
     private static EntityOwner directEntityOwner(Event event, String methodPrefix, List<OwnerMiss> misses) {
@@ -234,7 +253,8 @@ final class SyntheticEventOwnerExtractor {
         return null;
     }
 
-    private static BlockOwner directBlockOwner(Event event, String methodPrefix, List<OwnerMiss> misses) {
+    private static BlockOwner directBlockOwner(Event event, String methodPrefix, List<OwnerMiss> misses,
+                                               List<MultiRegionObservation> multiRegionObservations) {
         for (String name : BLOCK_GETTER_NAMES) {
             BlockOwner owner = singleBlockOwner(event, name, misses);
             if (owner != null) {
@@ -242,7 +262,7 @@ final class SyntheticEventOwnerExtractor {
             }
         }
         for (String name : BLOCK_COLLECTION_GETTER_NAMES) {
-            BlockOwner owner = blockCollectionOwner(event, name, misses);
+            BlockOwner owner = blockCollectionOwner(event, name, misses, multiRegionObservations);
             if (owner != null) {
                 return new BlockOwner(owner.block(), methodPrefix + owner.methodName(), owner.blockCount());
             }
@@ -397,7 +417,8 @@ final class SyntheticEventOwnerExtractor {
         return null;
     }
 
-    private static BlockOwner blockCollectionOwner(Event event, String methodName, List<OwnerMiss> misses) {
+    private static BlockOwner blockCollectionOwner(Event event, String methodName, List<OwnerMiss> misses,
+                                                   List<MultiRegionObservation> multiRegionObservations) {
         for (Method method : event.getClass().getMethods()) {
             if (!methodName.equals(method.getName())) continue;
             if (method.getParameterCount() != 0) {
@@ -428,6 +449,7 @@ final class SyntheticEventOwnerExtractor {
                 Block first = null;
                 int count = 0;
                 boolean accepted = true;
+                Map<String, Block> ownerAnchors = new LinkedHashMap<>();
                 for (Object item : blocks) {
                     if (!(item instanceof Block block)) {
                         misses.add(new OwnerMiss("block", methodName, "non-block-collection-item",
@@ -437,13 +459,25 @@ final class SyntheticEventOwnerExtractor {
                     }
                     if (first == null) {
                         first = block;
-                    } else if (!sameChunk(first, block)) {
-                        misses.add(new OwnerMiss("block", methodName, "multi-region-collection",
-                                "size=" + blocks.size()));
-                        accepted = false;
-                        break;
                     }
+                    ownerAnchors.putIfAbsent(ownerKey(block), block);
                     count++;
+                }
+                if (accepted && ownerAnchors.size() > 1) {
+                    misses.add(new OwnerMiss("block", methodName, "multi-region-collection",
+                            "size=" + blocks.size()));
+                    accepted = false;
+                }
+                if (!accepted && !ownerAnchors.isEmpty()) {
+                    boolean readOnly = readOnlyEvent(event);
+                    // Phase 1/2 of the multi-region model is evidence-first:
+                    // unknown collections stay serialized, explicit read-only
+                    // shapes may run a read split without replaying listeners.
+                    multiRegionObservations.add(new MultiRegionObservation("block", methodName,
+                            RouteFamily.C_REGION_BLOCK, ownerAnchors.size(), blocks.size(),
+                            readOnly ? "read-only" : "read-or-write-unknown",
+                            String.join("|", ownerAnchors.keySet()), readOnly,
+                            List.copyOf(ownerAnchors.values())));
                 }
                 if (accepted && first != null) {
                     return new BlockOwner(first, method.getName(), count);
@@ -518,6 +552,33 @@ final class SyntheticEventOwnerExtractor {
                 && (first.getZ() >> 4) == (other.getZ() >> 4);
     }
 
+    private static String ownerKey(Block block) {
+        if (block == null) return "unknown-block";
+        try {
+            String world = block.getWorld() == null ? "unknown-world" : block.getWorld().getName();
+            return world + ":" + (block.getX() >> 4) + "," + (block.getZ() >> 4);
+        } catch (RuntimeException exception) {
+            return block.getClass().getName();
+        }
+    }
+
+    private static boolean readOnlyEvent(Event event) {
+        if (event == null) return false;
+        for (String name : READ_ONLY_GETTER_NAMES) {
+            for (Method method : event.getClass().getMethods()) {
+                if (!name.equals(method.getName())) continue;
+                if (method.getParameterCount() != 0 || Modifier.isStatic(method.getModifiers())) continue;
+                if (method.getReturnType() != boolean.class && method.getReturnType() != Boolean.class) continue;
+                try {
+                    return Boolean.TRUE.equals(method.invoke(event));
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean hasMethodNamed(Event event, String methodName) {
         for (Method method : event.getClass().getMethods()) {
             if (methodName.equals(method.getName())) return true;
@@ -535,9 +596,14 @@ final class SyntheticEventOwnerExtractor {
     }
 
     record OwnerScan(EntityOwner entityOwner, BlockOwner blockOwner,
-                     LocationOwner locationOwner, List<OwnerMiss> misses) {
+                     LocationOwner locationOwner, List<OwnerMiss> misses,
+                     List<MultiRegionObservation> multiRegionObservations) {
         boolean hasOwner() {
             return entityOwner != null || blockOwner != null || locationOwner != null;
+        }
+
+        boolean hasMultiRegionObservation() {
+            return multiRegionObservations != null && !multiRegionObservations.isEmpty();
         }
 
         String missSummary() {
@@ -559,6 +625,21 @@ final class SyntheticEventOwnerExtractor {
     }
 
     record OwnerMiss(String ownerKind, String methodName, String reason, String detail) {
+    }
+
+    record MultiRegionObservation(String ownerKind, String methodName, RouteFamily routeFamily,
+                                  int ownerCount, int itemCount, String operationKind,
+                                  String ownerSet, boolean readOnly, List<Block> ownerAnchors) {
+        String detail() {
+            return "ownerKind=" + ownerKind
+                    + " method=" + methodName
+                    + " route=" + routeFamily.label()
+                    + " owners=" + ownerCount
+                    + " items=" + itemCount
+                    + " operation=" + operationKind
+                    + " readOnly=" + readOnly
+                    + " ownerSet=" + ownerSet;
+        }
     }
 
     record EntityOwner(Entity entity, String methodName) {

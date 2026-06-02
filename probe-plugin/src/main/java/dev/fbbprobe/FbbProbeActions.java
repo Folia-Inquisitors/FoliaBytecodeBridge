@@ -38,10 +38,17 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public final class FbbProbeActions implements ProbeActions {
+
+    private static final String UNKNOWN_OVERLAP_MARKER = "FBB_REMOVE_ME_UNKNOWN_OVERLAP_PROBE_V1";
+    private static final String INTERNAL_STATE_MARKER = "FBB_REMOVE_ME_INTERNAL_STATE_PROBE_V1";
 
     @Override
     public void runStartupProbes(ProbeRuntime runtime) {
@@ -253,6 +260,24 @@ public final class FbbProbeActions implements ProbeActions {
                                         + " promotion=observed-not-promoted";
                             });
                 });
+        runtime.probeModel("synthetic-listener-concurrency", "S_GLOBAL",
+                "SyntheticEventPathBridge#probeListenerReentry(...)",
+                "dev.foliabytecodebridge.SyntheticEventPathBridge", "probeListenerReentry",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                "shared-listener-reentry-detection", "void", false,
+                () -> {
+                    String eventName = SharedEventPathProbeEvent.class.getName();
+                    String listenerOwner = "FBBProbeSyntheticConcurrentListener";
+                    String result = SyntheticEventPathBridge.probeListenerReentry(
+                            eventName, listenerOwner, "startup-probe-phase-5a");
+                    return "event=" + eventName
+                            + " listener=" + listenerOwner
+                            + " expected=synthetic-concurrency-reentry"
+                            + " result=" + result
+                            + " lane=single-thread-compatibility"
+                            + " model=phase-5a-diagnostic-probe"
+                            + " note=no-real-bukkit-state-touched";
+                });
         runtime.probeModel("synthetic-event-listener-exit", "A_ENTITY", "SyntheticEventDispatchBridge#callEvent(Event)",
                 "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
                 "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
@@ -285,6 +310,18 @@ public final class FbbProbeActions implements ProbeActions {
                             + " lane=single-thread-compatibility"
                             + " note=no-compatible-owner-getter";
                 });
+        runtime.probeModel("synthetic-event-unknown-overlap", "S_GLOBAL",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "dangerous-unknown-shared-event-overlap", "void", false,
+                () -> runUnknownOverlapProbe());
+        runtime.probeModel("synthetic-event-unknown-internal-state", "S_GLOBAL",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "dangerous-unknown-shared-internal-cache-overlap", "void", false,
+                () -> runUnknownInternalStateProbe());
         runtime.probeModel("synthetic-event-multi-region-blocks", "S_GLOBAL",
                 "SyntheticEventDispatchBridge#callEvent(Event)",
                 "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
@@ -308,6 +345,246 @@ public final class FbbProbeActions implements ProbeActions {
                             + " blockCount=2"
                             + " lane=single-thread-compatibility";
                 });
+        runtime.probeModel("synthetic-event-multi-region-read-only", "C_REGION_BLOCK",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-read-only-split", "void", false,
+                () -> {
+                    if (Bukkit.getWorlds().isEmpty()) {
+                        return "blocked=no-world-loaded expected=synthetic-read-split";
+                    }
+                    World world = Bukkit.getWorlds().get(0);
+                    Location spawn = world.getSpawnLocation();
+                    Block first = world.getBlockAt(spawn);
+                    Block second = world.getBlockAt(spawn.getBlockX() + 32, spawn.getBlockY(), spawn.getBlockZ());
+                    SharedBlockCollectionProbeEvent event = new SharedBlockCollectionProbeEvent(
+                            "startup-auto", "startup-multi-region-read-only", List.of(first, second), true);
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " route=C_REGION_BLOCK"
+                            + " expected=synthetic-read-split"
+                            + " readOnly=true"
+                            + " blockCount=2"
+                            + " lane=single-thread-compatibility";
+                });
+        runtime.probeModel("synthetic-event-multi-region-mutation-plan", "C_REGION_BLOCK",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-mutation-plan", "void", false,
+                () -> {
+                    if (Bukkit.getWorlds().isEmpty()) {
+                        return "blocked=no-world-loaded expected=synthetic-mutation-plan";
+                    }
+                    World world = Bukkit.getWorlds().get(0);
+                    Location spawn = world.getSpawnLocation();
+                    Block first = world.getBlockAt(spawn);
+                    Block second = world.getBlockAt(spawn.getBlockX() + 32, spawn.getBlockY(), spawn.getBlockZ());
+                    SharedBlockCollectionProbeEvent event = new SharedBlockCollectionProbeEvent(
+                            "startup-auto", "startup-multi-region-mutation-plan",
+                            List.of(first, second), false, true, "block-set-type");
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " route=C_REGION_BLOCK"
+                            + " expected=synthetic-mutation-plan"
+                            + " mutation=true"
+                            + " mutationKind=block-set-type"
+                            + " blockCount=2"
+                            + " lane=single-thread-compatibility";
+                });
+        runtime.probeModel("synthetic-event-multi-region-mutation-contract", "C_REGION_BLOCK",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-mutation-contract", "void", false,
+                () -> {
+                    if (Bukkit.getWorlds().isEmpty()) {
+                        return "blocked=no-world-loaded expected=synthetic-mutation-contract";
+                    }
+                    World world = Bukkit.getWorlds().get(0);
+                    Location spawn = world.getSpawnLocation();
+                    Block first = world.getBlockAt(spawn);
+                    Block second = world.getBlockAt(spawn.getBlockX() + 32, spawn.getBlockY(), spawn.getBlockZ());
+                    SharedBlockCollectionProbeEvent event = new SharedBlockCollectionProbeEvent(
+                            "startup-auto", "startup-multi-region-mutation-contract",
+                            List.of(first, second), false, true, "block-set-type",
+                            true, true, true);
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " route=C_REGION_BLOCK"
+                            + " expected=synthetic-mutation-contract"
+                            + " result=ready-not-executed"
+                            + " executor=guarded-by-syntheticMutationExecutor"
+                            + " contract=prepare,owner-apply,aggregate-verify"
+                            + " mutationKind=block-set-type"
+                            + " mutationEffects=" + String.join(",", event.mutationEffects())
+                            + " blockCount=2"
+                            + " lane=single-thread-compatibility";
+                });
+        runtime.probeModel("synthetic-event-multi-region-mutation-prepare-failure", "C_REGION_BLOCK",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-mutation-contract-negative-prepare", "void", false,
+                () -> runMutationContractNegativeProbe("startup-multi-region-mutation-prepare-failure",
+                        true, false));
+        runtime.probeModel("synthetic-event-multi-region-mutation-verify-failure", "C_REGION_BLOCK",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-mutation-contract-negative-verify", "void", false,
+                () -> runMutationContractNegativeProbe("startup-multi-region-mutation-verify-failure",
+                        false, true));
+    }
+
+    private static String runUnknownOverlapProbe() {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<String> results = Collections.synchronizedList(new ArrayList<>());
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+
+        Thread first = unknownOverlapThread("A", ready, start, results, failures);
+        Thread second = unknownOverlapThread("B", ready, start, results, failures);
+        first.start();
+        second.start();
+
+        await(ready, 2L, "unknown overlap probe workers did not become ready");
+        start.countDown();
+        join(first, 4L);
+        join(second, 4L);
+
+        if (!failures.isEmpty()) {
+            Throwable failure = failures.get(0);
+            throw new IllegalStateException("Unknown overlap probe failed: " + failure.getMessage(), failure);
+        }
+        return "marker=" + UNKNOWN_OVERLAP_MARKER
+                + " experiment=unknown-shared-event-overlap-v1"
+                + " event=" + SharedEventPathProbeEvent.class.getName()
+                + " routeFamily=UNKNOWN"
+                + " expected=serialized-compatibility-lane"
+                + " dispatchThreads=2"
+                + " completed=" + results.size()
+                + " results=" + String.join("|", results)
+                + " removable=true"
+                + " note=probe-only-dangerous-overlap-shape-no-real-bukkit-state-touched";
+    }
+
+    private static Thread unknownOverlapThread(String id, CountDownLatch ready, CountDownLatch start,
+                                               List<String> results, List<Throwable> failures) {
+        return new Thread(() -> {
+            try {
+                ready.countDown();
+                await(start, 2L, "unknown overlap probe start latch timed out");
+                SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                        UNKNOWN_OVERLAP_MARKER, "dangerous-unknown-overlap-" + id,
+                        "target-transformed", false, true);
+                SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                results.add(id + ":cancelled=" + event.isCancelled()
+                        + ",effects=" + event.effects().size()
+                        + ",effectsList=" + String.join(",", event.effects()));
+            } catch (Throwable throwable) {
+                failures.add(throwable);
+            }
+        }, "FBBProbe-unknown-overlap-" + id);
+    }
+
+    private static String runUnknownInternalStateProbe() {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<String> results = Collections.synchronizedList(new ArrayList<>());
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+
+        Thread first = unknownInternalStateThread("A", ready, start, results, failures);
+        Thread second = unknownInternalStateThread("B", ready, start, results, failures);
+        first.start();
+        second.start();
+
+        await(ready, 2L, "unknown internal-state probe workers did not become ready");
+        start.countDown();
+        join(first, 4L);
+        join(second, 4L);
+
+        if (!failures.isEmpty()) {
+            Throwable failure = failures.get(0);
+            throw new IllegalStateException("Unknown internal-state probe failed: " + failure.getMessage(), failure);
+        }
+        return "marker=" + INTERNAL_STATE_MARKER
+                + " experiment=unknown-internal-state-cache-v1"
+                + " event=" + SharedEventPathProbeEvent.class.getName()
+                + " routeFamily=UNKNOWN"
+                + " expected=serialized-compatibility-lane"
+                + " dispatchThreads=2"
+                + " completed=" + results.size()
+                + " results=" + String.join("|", results)
+                + " removable=true"
+                + " note=probe-only-shared-cache-shape-no-real-bukkit-state-touched";
+    }
+
+    private static Thread unknownInternalStateThread(String id, CountDownLatch ready, CountDownLatch start,
+                                                     List<String> results, List<Throwable> failures) {
+        return new Thread(() -> {
+            try {
+                ready.countDown();
+                await(start, 2L, "unknown internal-state probe start latch timed out");
+                SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                        INTERNAL_STATE_MARKER, "dangerous-unknown-internal-state-" + id,
+                        "target-transformed", false, false, true);
+                SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                results.add(id + ":cancelled=" + event.isCancelled()
+                        + ",effects=" + event.effects().size()
+                        + ",effectsList=" + String.join(",", event.effects()));
+            } catch (Throwable throwable) {
+                failures.add(throwable);
+            }
+        }, "FBBProbe-unknown-internal-state-" + id);
+    }
+
+    private static String runMutationContractNegativeProbe(String context, boolean failPrepare, boolean failVerify) {
+        if (Bukkit.getWorlds().isEmpty()) {
+            return "blocked=no-world-loaded expected=synthetic-mutation-executor-negative";
+        }
+        World world = Bukkit.getWorlds().get(0);
+        Location spawn = world.getSpawnLocation();
+        Block first = world.getBlockAt(spawn);
+        Block second = world.getBlockAt(spawn.getBlockX() + 32, spawn.getBlockY(), spawn.getBlockZ());
+        SharedBlockCollectionProbeEvent event = new SharedBlockCollectionProbeEvent(
+                "startup-auto", context, List.of(first, second), false, true,
+                failPrepare ? "block-set-type-prepare-false" : "block-set-type-verify-false",
+                true, true, true, failPrepare, failVerify);
+        SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+        return "event=" + event.getClass().getName()
+                + " route=C_REGION_BLOCK"
+                + " expected=synthetic-mutation-executor-negative"
+                + " failPrepare=" + failPrepare
+                + " failVerify=" + failVerify
+                + " contract=prepare,owner-apply,aggregate-verify"
+                + " mutationEffects=" + String.join(",", event.mutationEffects())
+                + " blockCount=2"
+                + " lane=single-thread-compatibility";
+    }
+
+    private static void await(CountDownLatch latch, long seconds, String failureMessage) {
+        try {
+            if (!latch.await(seconds, TimeUnit.SECONDS)) {
+                throw new IllegalStateException(failureMessage);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(failureMessage, exception);
+        }
+    }
+
+    private static void join(Thread thread, long seconds) {
+        try {
+            thread.join(TimeUnit.SECONDS.toMillis(seconds));
+            if (thread.isAlive()) {
+                throw new IllegalStateException("Unknown overlap probe worker did not finish: " + thread.getName());
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for unknown overlap probe worker", exception);
+        }
     }
 
     @Override

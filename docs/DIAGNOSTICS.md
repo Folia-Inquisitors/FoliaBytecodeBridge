@@ -121,6 +121,7 @@ repeatDiagnosticEvery=100
 | `foliabytecodebridge.classpathRoots` | `libraries;versions;cache` | Semicolon-separated roots scanned for Folia/Paper API jars and server libraries. |
 | `foliabytecodebridge.selfAttach` | `true` | Experimental: when `-javaagent` was not used, try to attach from plugin `onLoad` using a helper JVM and the same jar. |
 | `foliabytecodebridge.metadataOverlay` | `off` | Experimental load-gate overlay. `all` rewrites Folia's plugin metadata check so every plugin reports `folia-supported` at load time. Requires `-javaagent` to help plugins that would otherwise be rejected before class loading. |
+| `foliabytecodebridge.syntheticMutationExecutor` | `false` | Phase 5B guarded synthetic multi-region mutation executor. Runs only for explicit contract-ready events with exact prepare/apply/verify hooks. Leave false unless testing on a throwaway server; disabled paths log `phase=execute-mutation result=blocked reason=executor-disabled`. |
 | `foliabytecodebridge.forceNonFolia` | `false` | Test-only flag that forces non-Folia pass-through mode. Used by the smoke test. |
 
 The same diagnostic keys can be written without the `foliabytecodebridge.` prefix in `plugins/FoliaBytecodeBridge/config.properties`; for example `traceSchedulerCalls=true`.

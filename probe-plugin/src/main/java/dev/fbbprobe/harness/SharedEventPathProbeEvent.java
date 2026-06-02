@@ -22,19 +22,34 @@ public final class SharedEventPathProbeEvent extends Event implements Cancellabl
     private final String context;
     private final String bridgeRole;
     private final boolean entityOwnerExitProbe;
+    private final boolean unknownOverlapProbe;
+    private final boolean internalStateProbe;
     private final List<String> effects = new ArrayList<>();
     private boolean cancelled;
 
     public SharedEventPathProbeEvent(String trigger, String context, String bridgeRole) {
-        this(trigger, context, bridgeRole, false);
+        this(trigger, context, bridgeRole, false, false);
     }
 
     public SharedEventPathProbeEvent(String trigger, String context, String bridgeRole,
                                      boolean entityOwnerExitProbe) {
+        this(trigger, context, bridgeRole, entityOwnerExitProbe, false);
+    }
+
+    public SharedEventPathProbeEvent(String trigger, String context, String bridgeRole,
+                                     boolean entityOwnerExitProbe, boolean unknownOverlapProbe) {
+        this(trigger, context, bridgeRole, entityOwnerExitProbe, unknownOverlapProbe, false);
+    }
+
+    public SharedEventPathProbeEvent(String trigger, String context, String bridgeRole,
+                                     boolean entityOwnerExitProbe, boolean unknownOverlapProbe,
+                                     boolean internalStateProbe) {
         this.trigger = trigger;
         this.context = context;
         this.bridgeRole = bridgeRole;
         this.entityOwnerExitProbe = entityOwnerExitProbe;
+        this.unknownOverlapProbe = unknownOverlapProbe;
+        this.internalStateProbe = internalStateProbe;
     }
 
     public static HandlerList getHandlerList() {
@@ -60,6 +75,14 @@ public final class SharedEventPathProbeEvent extends Event implements Cancellabl
 
     public boolean entityOwnerExitProbe() {
         return entityOwnerExitProbe;
+    }
+
+    public boolean unknownOverlapProbe() {
+        return unknownOverlapProbe;
+    }
+
+    public boolean internalStateProbe() {
+        return internalStateProbe;
     }
 
     public void addEffect(String effect) {

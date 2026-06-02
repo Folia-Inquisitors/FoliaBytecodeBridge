@@ -407,12 +407,117 @@ final class BridgeDiagnostics {
                 + " route=none"
                 + " routeFamily=UNKNOWN"
                 + " ownerStatus=missed"
+                + " marker=FBB_SYNTHETIC_OWNER_MISS_SERIALIZED_V1"
                 + " lane=single-thread-compatibility"
                 + " missReason=" + safe(missSummary)
                 + " laneActive=" + CompatibilityLane.active()
                 + " laneSequence=" + CompatibilityLane.currentSequence()
                 + " " + PrivacySanitizer.text(detail)
                 + " note=unknown-or-unproven-shared-event-stays-serialized");
+    }
+
+    static void syntheticMultiRegionDetect(String eventName, int listenerCount,
+                                           SyntheticEventOwnerExtractor.OwnerScan scan,
+                                           String detail) {
+        if (scan == null || !scan.hasMultiRegionObservation()) return;
+        for (SyntheticEventOwnerExtractor.MultiRegionObservation observation : scan.multiRegionObservations()) {
+            info("[FBB synthetic-multi-region] phase=detect"
+                    + " event=" + safe(eventName)
+                    + " listeners=" + listenerCount
+                    + " " + observation.detail()
+                    + " marker=FBB_SYNTHETIC_MULTI_REGION_DETECTED_V1"
+                    + " lane=single-thread-compatibility"
+                    + " result=observed-not-promoted"
+                    + " " + PrivacySanitizer.text(detail)
+                    + " note=phase1-owner-set-detection-before-optional-read-split");
+        }
+    }
+
+    static void syntheticMultiRegionReadSplit(String eventName, int listenerCount,
+                                              SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                              String detail) {
+        if (observation == null) return;
+        info("[FBB synthetic-multi-region] phase=split-read"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " marker=FBB_SYNTHETIC_READ_SPLIT_V1"
+                + " lane=single-thread-compatibility"
+                + " " + PrivacySanitizer.text(detail)
+                + " note=phase2-read-only-owner-split-no-listener-replay");
+    }
+
+    static void syntheticMultiRegionReadSplitFailure(String eventName, int listenerCount,
+                                                     SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                                     Throwable throwable) {
+        if (observation == null) return;
+        log(Level.WARNING, "[FBB synthetic-multi-region] phase=split-read"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " lane=single-thread-compatibility"
+                + " result=failed"
+                + " marker=FBB_SYNTHETIC_READ_SPLIT_FAILED_V1"
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + safe(throwable.getMessage())
+                + " note=phase2-read-only-owner-split-failed-preserve-evidence", throwable);
+    }
+
+    static void syntheticMultiRegionMutationPlan(String eventName, int listenerCount,
+                                                 SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                                 String detail) {
+        if (observation == null) return;
+        info("[FBB synthetic-multi-region] phase=plan-mutation"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " marker=FBB_SYNTHETIC_MUTATION_PLAN_V1"
+                + " lane=single-thread-compatibility"
+                + " " + PrivacySanitizer.text(detail)
+                + " note=phase3-mutation-plan-only-no-region-freeze-no-listener-replay");
+    }
+
+    static void syntheticMultiRegionMutationContract(String eventName, int listenerCount,
+                                                     SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                                     String detail) {
+        if (observation == null) return;
+        info("[FBB synthetic-multi-region] phase=contract-mutation"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " marker=FBB_SYNTHETIC_MUTATION_CONTRACT_V1"
+                + " lane=single-thread-compatibility"
+                + " " + PrivacySanitizer.text(detail)
+                + " note=phase4-contract-readiness-only-no-region-freeze-no-listener-replay");
+    }
+
+    static void syntheticMultiRegionMutationExecute(String eventName, int listenerCount,
+                                                    SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                                    String detail) {
+        if (observation == null) return;
+        info("[FBB synthetic-multi-region] phase=execute-mutation"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " lane=single-thread-compatibility"
+                + " " + PrivacySanitizer.text(detail)
+                + " note=phase5b-guarded-executor-exact-contract-only");
+    }
+
+    static void syntheticMultiRegionMutationExecuteFailure(String eventName, int listenerCount,
+                                                           SyntheticEventOwnerExtractor.MultiRegionObservation observation,
+                                                           Throwable throwable) {
+        if (observation == null) return;
+        log(Level.WARNING, "[FBB synthetic-multi-region] phase=execute-mutation"
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " " + observation.detail()
+                + " lane=single-thread-compatibility"
+                + " result=failed"
+                + " marker=FBB_SYNTHETIC_MUTATION_EXECUTOR_FAILED_V1"
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + safe(throwable.getMessage())
+                + " note=phase5b-executor-failed-preserve-evidence", throwable);
     }
 
     static void syntheticEventRouteExit(String action, String eventName, RouteFamily routeFamily,
@@ -462,6 +567,24 @@ final class BridgeDiagnostics {
                 + " laneSequence=" + CompatibilityLane.currentSequence()
                 + " " + PrivacySanitizer.text(detail)
                 + " note=listener-dispatched-inside-known-owner-route-exit");
+    }
+
+    static void syntheticConcurrency(String action, String eventName, String listenerOwner,
+                                     RouteFamily routeFamily, String ownerMethod,
+                                     String path, String detail) {
+        String route = routeFamily == null ? "none" : routeFamily.label();
+        info("[FBB synthetic-concurrency] phase=5A"
+                + " action=" + safe(action)
+                + " event=" + safe(eventName)
+                + " listener=" + safe(listenerOwner)
+                + " route=" + route
+                + (routeFamily == null ? " routeFamily=UNKNOWN" : "")
+                + " ownerMethod=" + safe(ownerMethod)
+                + " path=" + safe(path)
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=listener-reentry-detection-only-no-route-promotion");
     }
 
     private static String syntheticRouteExitFamily(RouteFamily routeFamily) {

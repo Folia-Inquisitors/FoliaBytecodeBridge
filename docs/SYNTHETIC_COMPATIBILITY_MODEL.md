@@ -193,6 +193,299 @@ unknown or multi-region event shape
   -> remain serialized/modelled, keep diagnostics
 ```
 
+## Synthetic Multi-Region Detection
+
+Phase 1 of the multi-region model is detection only. When a custom event
+exposes a block collection that crosses more than one chunk/owner anchor, the
+bridge records the owner set and keeps the event in the serialized synthetic
+lane:
+
+```text
+[FBB synthetic-multi-region] phase=detect route=C_REGION_BLOCK
+result=observed-not-promoted
+```
+
+This does not split the event, run a multi-region mutation, or freeze regions.
+It answers one narrow question: "did this synthetic path expose more than one
+owner?" The current owner key is chunk-based evidence, not a final Folia region
+lock model. It is good enough for phase 1 because it tells the next pass where
+`G_WORLD_SCAN_SPLIT`, a synthetic event model, or a future two-phase mutation
+model may be needed.
+
+Current phase-1 behavior:
+
+```text
+multi-owner read-like evidence
+  -> log owner count and owner set
+  -> stay serialized
+
+multi-owner mutation evidence
+  -> log as unknown read-or-write evidence
+  -> stay serialized
+  -> do not promote until the exact mutation shape is proven
+```
+
+## Phase 2 Read-Only Split/Aggregate
+
+Phase 2 is deliberately narrower than "run the event once per region." Replaying
+a listener chain across multiple regions could duplicate arbitrary listener
+side effects, so the bridge only performs an owner read pass when the event
+shape explicitly says it is read-only through a zero-argument boolean method
+such as `isReadOnly()`.
+
+The flow is:
+
+```text
+multi-owner block collection
+  -> event exposes isReadOnly() == true
+  -> schedule one block-owned read snapshot per owner anchor
+  -> log scheduled split-read evidence
+  -> aggregate completed owner reads from a completion callback
+  -> keep normal listener dispatch serialized
+```
+
+Expected evidence:
+
+```text
+[FBB synthetic-multi-region] phase=split-read route=C_REGION_BLOCK operation=read-only readOnly=true result=aggregated
+```
+
+Live Folia scheduler contexts do not block while waiting for other owner
+regions. The live path first emits `result=scheduled mode=nonblocking`, then a
+later completion callback emits `result=aggregated` or a preserved failure. The
+smoke harness uses `mode=smoke-inline` so the deterministic smoke assertion can
+still prove the aggregate path without needing a live scheduler.
+
+Unknown or mutation-shaped collections still use:
+
+```text
+operation=read-or-write-unknown readOnly=false result=observed-not-promoted
+```
+
+This phase is useful because it proves the owner set can be decomposed and read
+without treating the entire listener path as concurrently safe. Later phases
+can decide whether a specific listener/model shape is safe to replay, shim, or
+promote.
+
+## Phase 3 Mutation Planning
+
+Phase 3 is still not a multi-region write executor. It is a planning and
+evidence layer for explicit mutation-shaped synthetic events.
+
+The bridge looks for zero-argument boolean marker methods such as:
+
+```text
+isMutation()
+isMutationEvent()
+hasMutations()
+willMutate()
+mutatesBlocks()
+isBlockMutation()
+```
+
+If a multi-owner event does not expose one of those markers, it remains
+serialized and the plan log says:
+
+```text
+[FBB synthetic-multi-region] phase=plan-mutation result=blocked reason=no-explicit-mutation-intent
+```
+
+If the event explicitly says it is a mutation, the bridge records the intended
+two-phase shape:
+
+```text
+[FBB synthetic-multi-region] phase=plan-mutation result=planned-not-executed phases=prepare,owner-apply,aggregate-verify
+```
+
+That evidence means: "we have enough owner and mutation intent to discuss a
+future exact model." It does not execute region writes, replay listeners, freeze
+regions, or mark the path safe. Mutation kind getters such as
+`getMutationKind()`, `getMutationType()`, `getOperation()`, and `getAction()`
+are recorded when present so a future pass can decide whether the mutation has
+safe prepare/apply/verify semantics.
+
+## Phase 4 Mutation Contract Readiness
+
+Phase 4 asks the next question after Phase 3: does this explicit multi-region
+mutation event expose a clean two-phase-style contract?
+
+The bridge looks for zero-argument boolean markers:
+
+```text
+supportsPreparePhase()
+supportsOwnerApplyPhase()
+supportsAggregateVerifyPhase()
+```
+
+If mutation intent exists but those contract markers are missing, diagnostics
+stay blocked:
+
+```text
+[FBB synthetic-multi-region] phase=contract-mutation result=blocked reason=missing-two-phase-contract
+```
+
+If all three markers are present, the bridge logs readiness only:
+
+```text
+[FBB synthetic-multi-region] phase=contract-mutation result=ready-not-executed contract=prepare,owner-apply,aggregate-verify
+```
+
+This phase still does not perform multi-region writes, freeze regions, replay
+listener chains, or claim the event is safe. It only separates "explicit
+mutation but no contract" from "explicit mutation with a contract shape that a
+future exact synthetic model could implement."
+
+## Phase 5A Listener Re-Entry Detection
+
+Unknown listener code can still be unsafe even when no Bukkit route is visible.
+For example, a listener may mutate a normal Java collection, cache, cooldown
+map, or shared model while the same listener path is entered from another Folia
+region thread.
+
+`SyntheticListenerConcurrencyTracker` records active synthetic listener paths by
+event class and listener owner. If the same event/listener path is entered again
+while the first invocation is still active on another thread, diagnostics emit:
+
+```text
+[FBB synthetic-concurrency] phase=5A action=reentered result=compatibility-sensitive
+```
+
+The diagnostic includes both sides of the overlap:
+
+```text
+activeRoute=UNKNOWN activeOwnerMethod=none activePath=diagnostic-probe:startup-probe-phase-5a
+currentRoute=UNKNOWN currentOwnerMethod=none currentPath=diagnostic-probe:startup-probe-phase-5a
+```
+
+This is detection only. It does not prove the listener is unsafe, does not
+promote a route, and does not hide listener failures. It gives us a precise
+signal that the path should remain compatibility-sensitive while known Bukkit
+API calls inside that listener can still exit to `A_ENTITY`, `C_REGION_BLOCK`,
+`B_REGION_LOCATION`, or another proven owner route.
+
+`SyntheticEventPathBridge#probeListenerReentry(...)` exists only as a probe and
+smoke hook. It deliberately overlaps one synthetic event/listener key without
+touching real Bukkit entity, world, or block state, so Phase 5A can be tested
+without weakening the serialized compatibility lane.
+
+The live probe also includes two removable stress markers:
+
+```text
+FBB_REMOVE_ME_UNKNOWN_OVERLAP_PROBE_V1
+FBB_REMOVE_ME_INTERNAL_STATE_PROBE_V1
+```
+
+The first marker fires two unknown shared event paths at the same time and
+expects `maxActiveListeners=1`. The second models ordinary unknown plugin
+internals, such as collection/cache/cooldown mutation across the listener
+chain, and expects `maxActiveInternalPaths=1`. Passing those probes means the
+synthetic lane preserved serialized execution for those shapes; it does not
+prove arbitrary plugin internals are permanently safe or promote the listener
+body to concurrent execution.
+
+## Synthetic Diagnostic Markers
+
+Synthetic diagnostics include stable `marker=` tokens so large debug logs can be
+searched by outcome instead of by prose:
+
+```text
+FBB_SYNTHETIC_OWNER_MISS_SERIALIZED_V1
+FBB_SYNTHETIC_MULTI_REGION_DETECTED_V1
+FBB_SYNTHETIC_READ_SPLIT_V1
+FBB_SYNTHETIC_READ_SPLIT_FAILED_V1
+FBB_SYNTHETIC_MUTATION_PLAN_V1
+FBB_SYNTHETIC_MUTATION_CONTRACT_V1
+FBB_SYNTHETIC_MUTATION_EXECUTOR_DISABLED_V1
+FBB_SYNTHETIC_MUTATION_MISSING_HOOKS_V1
+FBB_SYNTHETIC_MUTATION_NO_OWNER_ANCHORS_V1
+FBB_SYNTHETIC_MUTATION_PREPARE_BLOCKED_V1
+FBB_SYNTHETIC_MUTATION_OWNER_APPLY_SCHEDULED_V1
+FBB_SYNTHETIC_MUTATION_COMPLETED_VERIFIED_V1
+FBB_SYNTHETIC_MUTATION_VERIFY_BLOCKED_V1
+FBB_SYNTHETIC_MUTATION_EXECUTOR_FAILED_V1
+```
+
+These markers are identifiers for evidence paths, not safety claims. For
+example, `FBB_SYNTHETIC_MUTATION_COMPLETED_VERIFIED_V1` means the exact
+prepare/apply/verify contract completed for the observed event shape; it does
+not mean arbitrary multi-region mutations are globally safe.
+
+## Phase 5B Guarded Multi-Region Mutation Executor
+
+Phase 5B is the first executor for synthetic multi-region mutation events, but
+it is deliberately guarded and exact-contract only. It does not freeze the
+world, replay arbitrary listener chains, or treat unknown mutation events as
+safe.
+
+The executor can run only when all earlier evidence is present:
+
+```text
+multi-owner block collection
+  -> explicit mutation intent
+  -> prepare/owner-apply/aggregate-verify contract markers
+  -> exact prepare/apply/verify hook methods
+  -> syntheticMutationExecutor=true
+```
+
+Accepted hook shapes are intentionally small:
+
+```text
+prepareMutation() -> void|boolean|Boolean
+applyOwnerMutation(Block) -> void|boolean|Boolean
+verifyAggregateMutation(int scheduledOwners, int completedOwners) -> void|boolean|Boolean
+```
+
+The default config keeps this disabled:
+
+```properties
+syntheticMutationExecutor=false
+```
+
+When disabled, the bridge emits:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=executor-disabled action=stay-serialized
+```
+
+When enabled on a live server, the executor prepares once, schedules one
+owner-apply task for each block owner through Folia's region scheduler, and
+verifies the aggregate result from the completion callback:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=scheduled action=owner-apply-tasks mode=nonblocking
+[FBB synthetic-multi-region] phase=execute-mutation result=completed reason=verified action=two-phase-mutation-executor mode=nonblocking
+```
+
+The smoke harness uses `foliabytecodebridge.smokeSyntheticMutationExecutor=true`
+to run the same hook contract inline. That gives deterministic local proof of
+the phase without needing a live Folia region scheduler:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=completed reason=verified mode=smoke-inline
+```
+
+Any missing hook, failed hook, false verify result, missing owner anchor, or
+timeout remains visible as `[FBB synthetic-multi-region] phase=execute-mutation`
+evidence. This keeps unknown behavior inside the synthetic/serialized model
+instead of silently promoting it.
+
+Negative contract probes are part of this phase. A prepare hook returning false
+must log:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=prepare-returned-false
+```
+
+A verify hook returning false after owner apply must log:
+
+```text
+[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=verify-returned-false
+```
+
+These cases are just as important as the successful executor path because they
+prove the synthetic model preserves failure evidence instead of making a bad
+multi-region contract look safe.
+
 ## Delegated Original Event Owners
 
 Some compatibility events are wrappers around another Bukkit event. In that

@@ -89,6 +89,10 @@ public final class SyntheticEventDispatchBridge {
             return;
         }
 
+        BridgeDiagnostics.syntheticMultiRegionDetect(eventName, listeners.length, ownerScan,
+                "action=stay-serialized reason=multi-owner-event-path");
+        SyntheticMultiRegionReadBridge.tryReadOnlySplit(eventName, listeners.length, ownerScan);
+        SyntheticMultiRegionMutationPlanner.tryPlan(eventName, listeners.length, event, ownerScan);
         BridgeDiagnostics.syntheticEventOwnerMiss(eventName, listeners.length, ownerScan,
                 "result=stay-serialized");
         BridgeDiagnostics.syntheticEventPathState("serialized", state.serialized(ownerScan.missSummary()),
@@ -275,7 +279,8 @@ public final class SyntheticEventDispatchBridge {
         }
         SyntheticEventPathBridge.observeListener(eventName, owner, "DISPATCH",
                 "call-registered-listener", cancellationState(event));
-        try {
+        try (SyntheticListenerConcurrencyTracker.Invocation ignored =
+                     SyntheticListenerConcurrencyTracker.enter(eventName, owner, routeFamily, ownerMethod, path)) {
             listener.callEvent(event);
         } catch (EventException exception) {
             BridgeDiagnostics.syntheticEventDispatchFailure(eventName, owner, exception);

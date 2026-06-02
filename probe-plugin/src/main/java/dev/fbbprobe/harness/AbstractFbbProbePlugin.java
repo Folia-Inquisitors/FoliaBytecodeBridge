@@ -13,10 +13,14 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 
 public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Listener, ProbeRuntime {
@@ -29,6 +33,14 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     private static final String DEFAULT_STARTUP_CONTEXTS = "global,async,region";
     private static final String MODE_LIST = "startup, safe, scan, ui, visibility, entity, world, chunk, server, scoreboard, recovery, paper, all, destructive";
     private static final String CONTEXT_LIST = "current, startup, entity, async, global, region, foreign-region, all";
+    private static final String UNKNOWN_OVERLAP_MARKER = "FBB_REMOVE_ME_UNKNOWN_OVERLAP_PROBE_V1";
+    private static final String INTERNAL_STATE_MARKER = "FBB_REMOVE_ME_INTERNAL_STATE_PROBE_V1";
+    private static final AtomicInteger UNKNOWN_OVERLAP_ACTIVE = new AtomicInteger();
+    private static final AtomicInteger UNKNOWN_OVERLAP_MAX_ACTIVE = new AtomicInteger();
+    private static final AtomicInteger INTERNAL_STATE_ACTIVE = new AtomicInteger();
+    private static final AtomicInteger INTERNAL_STATE_MAX_ACTIVE = new AtomicInteger();
+    private static final AtomicInteger INTERNAL_STATE_SEQUENCE = new AtomicInteger();
+    private static final List<String> INTERNAL_STATE_CACHE = Collections.synchronizedList(new ArrayList<>());
 
     private final Set<UUID> firstJoinPlayers = new HashSet<>();
     private final ThreadLocal<String> activeProbeMode = ThreadLocal.withInitial(() -> "unknown");
@@ -118,20 +130,41 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onSharedEventPathBegin(SharedEventPathProbeEvent event) {
+        int active = beginUnknownOverlapListener(event);
+        int internalActive = beginInternalStatePath(event);
         event.addEffect("begin-observed");
-        probeInfo("[FBB synthetic-event-probe] phase=LOWEST"
-                + " root=/" + rootCommand()
-                + " bridgeRole=" + bridgeRole()
-                + " event=" + event.getClass().getName()
-                + " trigger=" + event.trigger()
-                + " context=" + event.context()
-                + " route=S_GLOBAL"
-                + " lane=single-thread-compatibility"
-                + " model=synthetic-event-path"
-                + " shared=true"
-                + " action=observe-before-mutation"
-                + " cancelled=" + event.isCancelled()
-                + " effects=" + event.effects().size());
+        try {
+            probeInfo("[FBB synthetic-event-probe] phase=LOWEST"
+                    + " root=/" + rootCommand()
+                    + " bridgeRole=" + bridgeRole()
+                    + " event=" + event.getClass().getName()
+                    + " trigger=" + event.trigger()
+                    + " context=" + event.context()
+                    + unknownOverlapDetail(event, active)
+                    + internalStateDetail(event, internalActive)
+                    + " route=S_GLOBAL"
+                    + " lane=single-thread-compatibility"
+                    + " model=synthetic-event-path"
+                    + " shared=true"
+                    + " action=observe-before-mutation"
+                    + " cancelled=" + event.isCancelled()
+                    + " effects=" + event.effects().size());
+            if (event.unknownOverlapProbe()) {
+                // Probe-only pause: the two dispatch threads are released at
+                // the same time. If unknown listener execution is not really
+                // serialized, this active counter will rise above one.
+                sleepQuietly(150L);
+            }
+            if (event.internalStateProbe()) {
+                // Probe-only pause across the whole listener chain: this models
+                // ordinary plugin logic mutating collections/caches before any
+                // known Bukkit route is visible. Serialization should keep
+                // maxActiveInternalPaths at one.
+                sleepQuietly(75L);
+            }
+        } finally {
+            endUnknownOverlapListener(event);
+        }
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
@@ -144,6 +177,8 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
                 + " event=" + event.getClass().getName()
                 + " trigger=" + event.trigger()
                 + " context=" + event.context()
+                + unknownOverlapDetail(event, UNKNOWN_OVERLAP_ACTIVE.get())
+                + internalStateDetail(event, INTERNAL_STATE_ACTIVE.get())
                 + " route=S_GLOBAL"
                 + " lane=single-thread-compatibility"
                 + " model=synthetic-event-path"
@@ -164,6 +199,8 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
                 + " event=" + event.getClass().getName()
                 + " trigger=" + event.trigger()
                 + " context=" + event.context()
+                + unknownOverlapDetail(event, UNKNOWN_OVERLAP_ACTIVE.get())
+                + internalStateDetail(event, INTERNAL_STATE_ACTIVE.get())
                 + " route=A_ENTITY"
                 + " family=entity"
                 + " lane=single-thread-compatibility"
@@ -181,20 +218,84 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onSharedEventPathMonitor(SharedEventPathProbeEvent event) {
         event.addEffect("monitor-read");
-        probeInfo("[FBB synthetic-event-probe] phase=MONITOR"
-                + " root=/" + rootCommand()
-                + " bridgeRole=" + bridgeRole()
-                + " event=" + event.getClass().getName()
-                + " trigger=" + event.trigger()
-                + " context=" + event.context()
-                + " route=S_GLOBAL"
-                + " lane=single-thread-compatibility"
-                + " model=synthetic-event-path"
-                + " shared=true"
-                + " action=read-final-shared-event-state"
-                + " cancelled=" + event.isCancelled()
-                + " effects=" + event.effects().size()
-                + " effectsList=" + String.join(",", event.effects()));
+        try {
+            probeInfo("[FBB synthetic-event-probe] phase=MONITOR"
+                    + " root=/" + rootCommand()
+                    + " bridgeRole=" + bridgeRole()
+                    + " event=" + event.getClass().getName()
+                    + " trigger=" + event.trigger()
+                    + " context=" + event.context()
+                    + unknownOverlapDetail(event, UNKNOWN_OVERLAP_ACTIVE.get())
+                    + internalStateDetail(event, INTERNAL_STATE_ACTIVE.get())
+                    + " route=S_GLOBAL"
+                    + " lane=single-thread-compatibility"
+                    + " model=synthetic-event-path"
+                    + " shared=true"
+                    + " action=read-final-shared-event-state"
+                    + " cancelled=" + event.isCancelled()
+                    + " effects=" + event.effects().size()
+                    + " effectsList=" + String.join(",", event.effects()));
+        } finally {
+            endInternalStatePath(event);
+        }
+    }
+
+    private static int beginUnknownOverlapListener(SharedEventPathProbeEvent event) {
+        if (!event.unknownOverlapProbe()) return UNKNOWN_OVERLAP_ACTIVE.get();
+        int active = UNKNOWN_OVERLAP_ACTIVE.incrementAndGet();
+        UNKNOWN_OVERLAP_MAX_ACTIVE.accumulateAndGet(active, Math::max);
+        return active;
+    }
+
+    private static void endUnknownOverlapListener(SharedEventPathProbeEvent event) {
+        if (event.unknownOverlapProbe()) {
+            UNKNOWN_OVERLAP_ACTIVE.decrementAndGet();
+        }
+    }
+
+    private static String unknownOverlapDetail(SharedEventPathProbeEvent event, int active) {
+        if (!event.unknownOverlapProbe()) return "";
+        return " marker=" + UNKNOWN_OVERLAP_MARKER
+                + " experiment=unknown-shared-event-overlap-v1"
+                + " activeListeners=" + active
+                + " maxActiveListeners=" + UNKNOWN_OVERLAP_MAX_ACTIVE.get()
+                + " expectedMaxActiveListeners=1"
+                + " removable=true";
+    }
+
+    private static int beginInternalStatePath(SharedEventPathProbeEvent event) {
+        if (!event.internalStateProbe()) return INTERNAL_STATE_ACTIVE.get();
+        int sequence = INTERNAL_STATE_SEQUENCE.incrementAndGet();
+        INTERNAL_STATE_CACHE.add(event.context() + ":begin:" + sequence);
+        int active = INTERNAL_STATE_ACTIVE.incrementAndGet();
+        INTERNAL_STATE_MAX_ACTIVE.accumulateAndGet(active, Math::max);
+        return active;
+    }
+
+    private static void endInternalStatePath(SharedEventPathProbeEvent event) {
+        if (event.internalStateProbe()) {
+            INTERNAL_STATE_CACHE.add(event.context() + ":end:" + INTERNAL_STATE_SEQUENCE.get());
+            INTERNAL_STATE_ACTIVE.decrementAndGet();
+        }
+    }
+
+    private static String internalStateDetail(SharedEventPathProbeEvent event, int active) {
+        if (!event.internalStateProbe()) return "";
+        return " marker=" + INTERNAL_STATE_MARKER
+                + " experiment=unknown-internal-state-cache-v1"
+                + " activeInternalPaths=" + active
+                + " maxActiveInternalPaths=" + INTERNAL_STATE_MAX_ACTIVE.get()
+                + " expectedMaxActiveInternalPaths=1"
+                + " cacheSize=" + INTERNAL_STATE_CACHE.size()
+                + " removable=true";
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override

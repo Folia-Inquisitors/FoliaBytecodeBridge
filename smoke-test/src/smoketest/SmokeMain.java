@@ -15,6 +15,7 @@ import dev.foliabytecodebridge.ServerExecutorBridge;
 import dev.foliabytecodebridge.ServerMemberMap;
 import dev.foliabytecodebridge.SyntheticEventDispatchBridge;
 import dev.foliabytecodebridge.SyntheticEventPathBridge;
+import dev.foliabytecodebridge.SyntheticListenerConcurrencySmoke;
 import dev.foliabytecodebridge.UnsafeCallBridge;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -96,7 +97,7 @@ public final class SmokeMain {
         BytecodeInventorySmoke.Result inventory = BytecodeInventorySmoke.scan(pluginJars);
         int rawInheritedOwnerHits = RawSchedulerTransformerSmoke.assertInheritedBukkitRunnableAsync(pluginJars);
         int rawAnonymousOverrideHits = RawSchedulerTransformerSmoke.assertAnonymousRunnableOverride(pluginJars);
-        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertserver-utility plugin referenceHelperNotMisclassified(pluginJars);
+        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertEssentialsHelperNotMisclassified(pluginJars);
         int rawLegacyAsyncRepeatingHits = RawSchedulerTransformerSmoke.assertLegacyAsyncRepeatingScheduler(pluginJars);
         int rawCommandDispatchHits = RawServerCommandTransformerSmoke.assertSmokeTargetCommandDispatch();
         InstructionRouteScanner.RouteReport routeReport = runInstructionRouteScannerSmoke();
@@ -117,6 +118,12 @@ public final class SmokeMain {
                 new Location(world, 12, 64, 12));
         String noOwnerSerializedEvidence = runSyntheticNoOwnerSerializedSmoke();
         String multiRegionSerializedEvidence = runSyntheticMultiRegionSerializedSmoke(world);
+        String multiRegionReadSplitEvidence = runSyntheticMultiRegionReadSplitSmoke(world);
+        String multiRegionMutationPlanEvidence = runSyntheticMultiRegionMutationPlanSmoke(world);
+        String multiRegionMutationContractEvidence = runSyntheticMultiRegionMutationContractSmoke(world);
+        String multiRegionMutationPrepareFailureEvidence = runSyntheticMultiRegionMutationPrepareFailureSmoke(world);
+        String multiRegionMutationVerifyFailureEvidence = runSyntheticMultiRegionMutationVerifyFailureSmoke(world);
+        String listenerConcurrencyEvidence = SyntheticListenerConcurrencySmoke.run();
 
         logs.assertOnlyOfficialRoutes();
         logs.require("[FBB scheduler]", RouteFamily.S_GLOBAL);
@@ -354,6 +361,7 @@ public final class SmokeMain {
                 "ownerStatus=owner-missed", "laneStatus=serialized-compatibility-lane");
         logs.requireContains("[FBB synthetic-owner-miss]",
                 "event=smoketest.SmokeTarget$SmokeNoOwnerEvent",
+                "marker=FBB_SYNTHETIC_OWNER_MISS_SERIALIZED_V1",
                 "no-compatible-owner-getter");
         logs.requireContains("[FBB synthetic-event-state]", "action=serialized",
                 "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
@@ -361,6 +369,101 @@ public final class SmokeMain {
         logs.requireContains("[FBB synthetic-owner-miss]",
                 "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
                 "getBlocks:multi-region-collection");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=detect",
+                "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_MULTI_REGION_DETECTED_V1",
+                "owners=2",
+                "result=observed-not-promoted");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=split-read",
+                "event=smoketest.SmokeTarget$SmokeReadOnlyMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_READ_SPLIT_V1",
+                "operation=read-only",
+                "readOnly=true",
+                "result=aggregated",
+                "completedOwners=2");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=plan-mutation",
+                "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_MUTATION_PLAN_V1",
+                "operation=read-or-write-unknown",
+                "result=blocked",
+                "reason=no-explicit-mutation-intent");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=plan-mutation",
+                "event=smoketest.SmokeTarget$SmokeMutationMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_MUTATION_PLAN_V1",
+                "operation=read-or-write-unknown",
+                "result=planned-not-executed",
+                "phases=prepare,owner-apply,aggregate-verify",
+                "intentGetter=isMutation",
+                "mutationKind=block-set-type");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=contract-mutation",
+                "event=smoketest.SmokeTarget$SmokeMutationMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_MUTATION_CONTRACT_V1",
+                "result=blocked",
+                "reason=missing-two-phase-contract",
+                "prepare=false",
+                "ownerApply=false",
+                "aggregateVerify=false");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=contract-mutation",
+                "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "marker=FBB_SYNTHETIC_MUTATION_CONTRACT_V1",
+                "result=ready-not-executed",
+                "contract=prepare,owner-apply,aggregate-verify",
+                "mutationKind=block-set-type");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=execute-mutation",
+                "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "result=completed",
+                "reason=verified",
+                "marker=FBB_SYNTHETIC_MUTATION_COMPLETED_VERIFIED_V1",
+                "scheduledOwners=2",
+                "completedOwners=2",
+                "prepareHook=prepareMutation",
+                "applyHook=applyOwnerMutation",
+                "verifyHook=verifyAggregateMutation",
+                "mode=smoke-inline");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=execute-mutation",
+                "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "result=blocked",
+                "reason=prepare-returned-false",
+                "marker=FBB_SYNTHETIC_MUTATION_PREPARE_BLOCKED_V1",
+                "prepareHook=prepareMutation",
+                "mutationKind=block-set-type");
+        logs.requireContains("[FBB synthetic-multi-region]",
+                "phase=execute-mutation",
+                "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK",
+                "result=blocked",
+                "reason=verify-returned-false",
+                "marker=FBB_SYNTHETIC_MUTATION_VERIFY_BLOCKED_V1",
+                "scheduledOwners=2",
+                "completedOwners=2",
+                "verifyHook=verifyAggregateMutation",
+                "mode=smoke-inline");
+        logs.requireContains("[FBB synthetic-concurrency]",
+                "phase=5A",
+                "action=reentered",
+                "event=smoketest.SyntheticConcurrencyEvent",
+                "listener=SmokePlugin/smoketest.SyntheticConcurrencyListener",
+                "route=none",
+                "routeFamily=UNKNOWN",
+                "activePath=diagnostic-probe:smoke-phase-5a",
+                "currentPath=diagnostic-probe:smoke-phase-5a",
+                "result=compatibility-sensitive");
         logs.requireContains("[FBB synthetic-listener-route-exit]",
                 "event=smoketest.SmokeTarget$SmokeEntityOwnedEvent",
                 "route=A_ENTITY", "listener=SmokePlugin/");
@@ -396,7 +499,13 @@ public final class SmokeMain {
                 + " delegatedBlockRouteExitEvidence=" + delegatedBlockRouteExitEvidence
                 + " locationOwnedRouteExitEvidence=" + locationOwnedRouteExitEvidence
                 + " noOwnerSerializedEvidence=" + noOwnerSerializedEvidence
-                + " multiRegionSerializedEvidence=" + multiRegionSerializedEvidence);
+                + " multiRegionSerializedEvidence=" + multiRegionSerializedEvidence
+                + " multiRegionReadSplitEvidence=" + multiRegionReadSplitEvidence
+                + " multiRegionMutationPlanEvidence=" + multiRegionMutationPlanEvidence
+                + " multiRegionMutationContractEvidence=" + multiRegionMutationContractEvidence
+                + " multiRegionMutationPrepareFailureEvidence=" + multiRegionMutationPrepareFailureEvidence
+                + " multiRegionMutationVerifyFailureEvidence=" + multiRegionMutationVerifyFailureEvidence
+                + " listenerConcurrencyEvidence=" + listenerConcurrencyEvidence);
     }
 
     private static String runCompatibilityLaneSmoke() {
@@ -567,6 +676,84 @@ public final class SmokeMain {
         SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
                 new SmokeTarget.SmokeMultiBlockCollectionOwnedEvent(List.of(first, second)));
         return "multi-region-blocks-stayed-serialized";
+    }
+
+    private static String runSyntheticMultiRegionReadSplitSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        System.setProperty("foliabytecodebridge.smokeSyntheticReadSplit", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                    new SmokeTarget.SmokeReadOnlyMultiBlockCollectionOwnedEvent(List.of(first, second)));
+            return "multi-region-read-only-split-aggregated";
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeSyntheticReadSplit");
+        }
+    }
+
+    private static String runSyntheticMultiRegionMutationPlanSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                new SmokeTarget.SmokeMutationMultiBlockCollectionOwnedEvent(List.of(first, second)));
+        return "multi-region-mutation-planned-not-executed";
+    }
+
+    private static String runSyntheticMultiRegionMutationContractSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent event =
+                new SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent(List.of(first, second));
+        System.setProperty("foliabytecodebridge.smokeSyntheticMutationExecutor", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(), event);
+            if (event.mutationEffects().size() != 4) {
+                throw new IllegalStateException("Expected prepare/apply/apply/verify effects, got "
+                        + event.mutationEffects());
+            }
+            return "multi-region-mutation-contract-ready-and-executed effects="
+                    + String.join(",", event.mutationEffects());
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeSyntheticMutationExecutor");
+        }
+    }
+
+    private static String runSyntheticMultiRegionMutationPrepareFailureSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent event =
+                new SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent(List.of(first, second), true, false);
+        System.setProperty("foliabytecodebridge.smokeSyntheticMutationExecutor", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(), event);
+            if (!event.mutationEffects().equals(List.of("prepare"))) {
+                throw new IllegalStateException("Prepare-failure path should stop after prepare, got "
+                        + event.mutationEffects());
+            }
+            return "multi-region-mutation-prepare-failure-blocked effects="
+                    + String.join(",", event.mutationEffects());
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeSyntheticMutationExecutor");
+        }
+    }
+
+    private static String runSyntheticMultiRegionMutationVerifyFailureSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent event =
+                new SmokeTarget.SmokeContractMultiBlockCollectionOwnedEvent(List.of(first, second), false, true);
+        System.setProperty("foliabytecodebridge.smokeSyntheticMutationExecutor", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(), event);
+            if (event.mutationEffects().size() != 4) {
+                throw new IllegalStateException("Verify-failure path should prepare/apply/apply/verify, got "
+                        + event.mutationEffects());
+            }
+            return "multi-region-mutation-verify-failure-blocked effects="
+                    + String.join(",", event.mutationEffects());
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeSyntheticMutationExecutor");
+        }
     }
 
     private static String runServerMemberMapSmoke() {

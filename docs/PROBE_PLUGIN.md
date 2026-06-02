@@ -216,8 +216,73 @@ The target startup probe also sends two negative wrapper cases through
 
 - a no-owner custom event, expected to emit `[FBB synthetic-owner-miss]` with
   `no-compatible-owner-getter`;
+- a two-thread no-owner overlap experiment marked
+  `FBB_REMOVE_ME_UNKNOWN_OVERLAP_PROBE_V1`, expected to keep unknown listener
+  execution serialized with `maxActiveListeners=1` even though two dispatch
+  threads start together. This is probe-only and intentionally labeled
+  `removable=true` so it can be deleted when the synthetic event model is
+  stable.
+- a two-thread unknown internal-state/cache experiment marked
+  `FBB_REMOVE_ME_INTERNAL_STATE_PROBE_V1`, expected to keep arbitrary
+  listener-chain internals serialized with `maxActiveInternalPaths=1` while
+  both dispatch threads start together. This models ordinary plugin logic such
+  as collections, caches, and cooldown maps without touching real Bukkit state.
 - a multi-region block collection event, expected to emit
-  `multi-region-collection` and remain in the serialized compatibility lane.
+  `[FBB synthetic-multi-region] phase=detect`, `multi-region-collection`, and
+  remain in the serialized compatibility lane.
+- a read-only multi-region block collection event, expected to emit
+  `[FBB synthetic-multi-region] phase=split-read`, `operation=read-only`, and
+  `result=aggregated` after one owner read pass per anchor.
+- an explicit mutation multi-region block collection event, expected to emit
+  `[FBB synthetic-multi-region] phase=plan-mutation`,
+  `result=planned-not-executed`, and
+  `phases=prepare,owner-apply,aggregate-verify`. This is plan evidence only;
+  it does not run a multi-region write.
+- an explicit mutation multi-region block collection event with all Phase 4
+  contract markers, expected to emit
+  `[FBB synthetic-multi-region] phase=contract-mutation`,
+  `result=ready-not-executed`, and
+  `contract=prepare,owner-apply,aggregate-verify`. This is readiness evidence
+  only unless the guarded Phase 5B executor is enabled.
+- the same contract-ready event also reaches
+  `[FBB synthetic-multi-region] phase=execute-mutation`. With the default
+  `syntheticMutationExecutor=false`, the expected result is
+  `result=blocked reason=executor-disabled action=stay-serialized`. When
+  `syntheticMutationExecutor=true` is set on a throwaway server, the expected
+  live path is `result=scheduled`, followed by `result=completed
+  reason=verified` or a preserved failure. This is an exact hook-contract test,
+  not a broad multi-region write unlock.
+- negative exact-contract mutation probes for prepare and verify failure. With
+  the executor enabled, these should emit `reason=prepare-returned-false` or
+  `reason=verify-returned-false`; with the executor disabled, they remain
+  blocked at `reason=executor-disabled`. These probes prove the executor fails
+  loudly instead of silently treating a bad contract as safe.
+
+The synthetic probe lines now include stable `marker=` identifiers for the
+important outcomes. Grep these before reading the full surrounding stack:
+
+```text
+FBB_SYNTHETIC_OWNER_MISS_SERIALIZED_V1
+FBB_SYNTHETIC_MULTI_REGION_DETECTED_V1
+FBB_SYNTHETIC_READ_SPLIT_V1
+FBB_SYNTHETIC_MUTATION_PLAN_V1
+FBB_SYNTHETIC_MUTATION_CONTRACT_V1
+FBB_SYNTHETIC_MUTATION_EXECUTOR_DISABLED_V1
+FBB_SYNTHETIC_MUTATION_PREPARE_BLOCKED_V1
+FBB_SYNTHETIC_MUTATION_OWNER_APPLY_SCHEDULED_V1
+FBB_SYNTHETIC_MUTATION_COMPLETED_VERIFIED_V1
+FBB_SYNTHETIC_MUTATION_VERIFY_BLOCKED_V1
+```
+
+If the same synthetic event/listener path is observed while an earlier
+invocation is still active on another thread, the bridge emits
+`[FBB synthetic-concurrency] phase=5A`. That is re-entry/concurrency evidence
+for unknown listener internals; it does not promote a route and does not silence
+the listener failure. The target probe includes
+`synthetic-listener-concurrency`, which calls the bridge's diagnostic-only
+`SyntheticEventPathBridge#probeListenerReentry(...)` hook and should log
+`activePath=diagnostic-probe:startup-probe-phase-5a` plus
+`currentPath=diagnostic-probe:startup-probe-phase-5a`.
 
 This is compatibility-model evidence only. It does not rewrite Bukkit event
 dispatch yet, and it does not claim that shared event paths are safe to split.

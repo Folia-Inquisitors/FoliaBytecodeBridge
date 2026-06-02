@@ -41,6 +41,7 @@ import smoketest.shaded.GenericTeleportSchedulerLike;
 import smoketest.shaded.GenericTeleportSchedulerLikeImpl;
 import smoketest.shaded.PaperLibLike;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
@@ -553,6 +554,137 @@ final class SmokeTarget {
 
         public List<Block> getBlocks() {
             return blocks;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeReadOnlyMultiBlockCollectionOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final List<Block> blocks;
+
+        public SmokeReadOnlyMultiBlockCollectionOwnedEvent(List<Block> blocks) {
+            this.blocks = blocks;
+        }
+
+        public List<Block> getBlocks() {
+            return blocks;
+        }
+
+        public boolean isReadOnly() {
+            return true;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeMutationMultiBlockCollectionOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final List<Block> blocks;
+
+        public SmokeMutationMultiBlockCollectionOwnedEvent(List<Block> blocks) {
+            this.blocks = blocks;
+        }
+
+        public List<Block> getBlocks() {
+            return blocks;
+        }
+
+        public boolean isMutation() {
+            return true;
+        }
+
+        public String getMutationKind() {
+            return "block-set-type";
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeContractMultiBlockCollectionOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final List<Block> blocks;
+        private final List<String> mutationEffects = new ArrayList<>();
+        private final boolean failPrepare;
+        private final boolean failVerify;
+
+        public SmokeContractMultiBlockCollectionOwnedEvent(List<Block> blocks) {
+            this(blocks, false, false);
+        }
+
+        public SmokeContractMultiBlockCollectionOwnedEvent(List<Block> blocks,
+                                                           boolean failPrepare,
+                                                           boolean failVerify) {
+            this.blocks = blocks;
+            this.failPrepare = failPrepare;
+            this.failVerify = failVerify;
+        }
+
+        public List<Block> getBlocks() {
+            return blocks;
+        }
+
+        public boolean isMutation() {
+            return true;
+        }
+
+        public String getMutationKind() {
+            return "block-set-type";
+        }
+
+        public boolean supportsPreparePhase() {
+            return true;
+        }
+
+        public boolean supportsOwnerApplyPhase() {
+            return true;
+        }
+
+        public boolean supportsAggregateVerifyPhase() {
+            return true;
+        }
+
+        public boolean prepareMutation() {
+            mutationEffects.add("prepare");
+            return !failPrepare;
+        }
+
+        public boolean applyOwnerMutation(Block block) {
+            mutationEffects.add("apply:" + (block == null ? "unknown" : block.getX() + "," + block.getZ()));
+            return true;
+        }
+
+        public boolean verifyAggregateMutation(int scheduledOwners, int completedOwners) {
+            mutationEffects.add("verify:" + scheduledOwners + "/" + completedOwners);
+            return !failVerify && scheduledOwners == completedOwners;
+        }
+
+        public List<String> mutationEffects() {
+            return mutationEffects;
         }
 
         @Override

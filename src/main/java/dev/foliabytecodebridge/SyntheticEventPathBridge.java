@@ -48,8 +48,48 @@ public final class SyntheticEventPathBridge {
         return CompatibilityLane.currentSequence();
     }
 
+    public static String probeListenerReentry(String eventName, String listenerOwner, String reason) {
+        String safeEvent = safe(eventName);
+        String safeListener = safe(listenerOwner);
+        String safeReason = safe(reason);
+        Thread first = new Thread(() -> {
+            try (SyntheticListenerConcurrencyTracker.Invocation ignored =
+                         SyntheticListenerConcurrencyTracker.enter(safeEvent, safeListener, null,
+                                 "none", "diagnostic-probe:" + safeReason)) {
+                sleep(250L);
+            }
+        }, "FBB-synthetic-5A-active");
+        first.start();
+        sleep(75L);
+        try (SyntheticListenerConcurrencyTracker.Invocation ignored =
+                     SyntheticListenerConcurrencyTracker.enter(safeEvent, safeListener, null,
+                             "none", "diagnostic-probe:" + safeReason)) {
+            // This public hook is intentionally diagnostic-only. It lets the
+            // probe prove Phase 5A without manufacturing real unsafe Bukkit
+            // state or weakening the serialized compatibility lane.
+        }
+        join(first);
+        return "synthetic-listener-concurrency-reentry";
+    }
+
     public static void shutdownLane() {
         CompatibilityLane.shutdown();
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void join(Thread thread) {
+        try {
+            thread.join(1000L);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static String safe(String value) {

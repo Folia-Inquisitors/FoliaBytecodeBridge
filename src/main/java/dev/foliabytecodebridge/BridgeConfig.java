@@ -39,6 +39,11 @@ final class BridgeConfig {
             modelSummaryIntervalSeconds=30
             repeatDiagnosticFirstLines=3
             repeatDiagnosticEvery=100
+
+            # Phase 5B is the first guarded synthetic multi-region mutation
+            # executor. It only runs for explicit contract-ready events with
+            # exact prepare/apply/verify hooks. Leave false unless testing.
+            syntheticMutationExecutor=false
             """;
     private static final Properties FILE_PROPERTIES = new Properties();
     private static volatile boolean loaded;
@@ -155,6 +160,10 @@ final class BridgeConfig {
 
     static String metadataOverlay() {
         return string("metadataOverlay", "off").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    static boolean syntheticMutationExecutor() {
+        return bool("syntheticMutationExecutor", false);
     }
 
     static boolean metadataOverlayAll() {
