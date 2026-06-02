@@ -337,6 +337,180 @@ final class BridgeDiagnostics {
                 + " note=rewritten-callsite-may-fail-with-NoClassDefFoundError", throwable);
     }
 
+    static void compatibilityContext(String action, CompatibilityContext.Frame frame, String detail) {
+        if (frame == null) return;
+        info("[FBB compatibility-context] action=" + action
+                + " " + frame.detail()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=unknown-legacy-execution-context-not-a-route-family");
+    }
+
+    static void compatibilityLane(String action, long sequence, String source, String reason, String detail) {
+        info("[FBB compatibility-lane] action=" + safe(action)
+                + " sequence=" + sequence
+                + " source=" + safe(source)
+                + " reason=" + safe(reason)
+                + " active=" + CompatibilityLane.active()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=serialized-compatibility-model-not-a-folia-owner-thread");
+    }
+
+    static void compatibilityLaneFailure(long sequence, String source, String reason, Throwable throwable) {
+        log(Level.WARNING, "[FBB compatibility-lane] action=failure"
+                + " sequence=" + sequence
+                + " source=" + safe(source)
+                + " reason=" + safe(reason)
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + safe(throwable.getMessage())
+                + " note=lane-preserved-failure-evidence-no-silent-bypass", throwable);
+    }
+
+    static void eventListener(String eventName, String listenerOwner, String phase,
+                              String effect, boolean cancelled, CompatibilityContext.Frame frame) {
+        info("[FBB event-listener] event=" + safe(eventName)
+                + " listener=" + safe(listenerOwner)
+                + " phase=" + safe(phase)
+                + " effect=" + safe(effect)
+                + " cancelled=" + cancelled
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " context=" + (frame == null ? "none" : frame.kind())
+                + (frame == null ? "" : " " + frame.detail())
+                + " note=synthetic-event-path-observation");
+    }
+
+    static void syntheticEventDispatch(String action, String eventName, int listenerCount, String detail) {
+        info("[FBB synthetic-event-dispatch] action=" + safe(action)
+                + " event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=custom-sync-event-compatibility-model");
+    }
+
+    static void syntheticEventPathState(String action, SyntheticEventPathState state, String detail) {
+        if (state == null) return;
+        info("[FBB synthetic-event-state] action=" + safe(action)
+                + " " + state.detail()
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=synthetic-wrapper-state-owner-route-or-serialized-lane");
+    }
+
+    static void syntheticEventOwnerMiss(String eventName, int listenerCount,
+                                        SyntheticEventOwnerExtractor.OwnerScan scan, String detail) {
+        String missSummary = scan == null ? "scan=null" : scan.missSummary();
+        info("[FBB synthetic-owner-miss] event=" + safe(eventName)
+                + " listeners=" + listenerCount
+                + " route=none"
+                + " routeFamily=UNKNOWN"
+                + " ownerStatus=missed"
+                + " lane=single-thread-compatibility"
+                + " missReason=" + safe(missSummary)
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=unknown-or-unproven-shared-event-stays-serialized");
+    }
+
+    static void syntheticEventRouteExit(String action, String eventName, RouteFamily routeFamily,
+                                        String ownerMethod, String ownerType,
+                                        int listenerCount, String detail) {
+        info("[FBB synthetic-event-route-exit] action=" + safe(action)
+                + " event=" + safe(eventName)
+                + " route=" + routeFamily.label()
+                + " family=" + syntheticRouteExitFamily(routeFamily)
+                + " next=" + syntheticRouteExitNext(routeFamily)
+                + " ownerMethod=" + safe(ownerMethod)
+                + " ownerType=" + safe(ownerType)
+                + " listeners=" + listenerCount
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=synthetic-event-known-owner-route-exit");
+    }
+
+    static void syntheticEventRouteExitFailure(String eventName, RouteFamily routeFamily,
+                                               String ownerMethod, String ownerType,
+                                               Throwable throwable) {
+        log(Level.WARNING, "[FBB synthetic-event-route-exit] action=failure"
+                + " event=" + safe(eventName)
+                + " route=" + routeFamily.label()
+                + " family=" + syntheticRouteExitFamily(routeFamily)
+                + " next=" + syntheticRouteExitNext(routeFamily)
+                + " ownerMethod=" + safe(ownerMethod)
+                + " ownerType=" + safe(ownerType)
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + safe(throwable.getMessage())
+                + " note=route-exit-failed-preserve-evidence", throwable);
+    }
+
+    static void syntheticEventListenerRouteExit(String eventName, String listenerOwner,
+                                                RouteFamily routeFamily, String ownerMethod,
+                                                String ownerType, String path, String detail) {
+        info("[FBB synthetic-listener-route-exit] event=" + safe(eventName)
+                + " listener=" + safe(listenerOwner)
+                + " route=" + routeFamily.label()
+                + " family=" + syntheticRouteExitFamily(routeFamily)
+                + " next=" + syntheticRouteExitNext(routeFamily)
+                + " ownerMethod=" + safe(ownerMethod)
+                + " ownerType=" + safe(ownerType)
+                + " path=" + safe(path)
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " " + PrivacySanitizer.text(detail)
+                + " note=listener-dispatched-inside-known-owner-route-exit");
+    }
+
+    private static String syntheticRouteExitFamily(RouteFamily routeFamily) {
+        if (routeFamily == RouteFamily.A_ENTITY) return "entity";
+        if (routeFamily == RouteFamily.C_REGION_BLOCK) return "region";
+        if (routeFamily == RouteFamily.B_REGION_LOCATION) return "region";
+        return "owner";
+    }
+
+    private static String syntheticRouteExitNext(RouteFamily routeFamily) {
+        if (routeFamily == RouteFamily.A_ENTITY) return "listener-entity-owner-exit";
+        if (routeFamily == RouteFamily.C_REGION_BLOCK) return "listener-block-owner-exit";
+        if (routeFamily == RouteFamily.B_REGION_LOCATION) return "listener-location-owner-exit";
+        return "listener-owner-route-exit";
+    }
+
+    static void syntheticEventDispatchFailure(String eventName, String listenerOwner, Throwable throwable) {
+        SyntheticListenerFailureClassifier.Result classification =
+                SyntheticListenerFailureClassifier.classify(throwable);
+        log(Level.WARNING, "[FBB synthetic-event-dispatch] action=listener-failure"
+                + " event=" + safe(eventName)
+                + " listener=" + safe(listenerOwner)
+                + " route=" + classification.routeLabel()
+                + " family=" + classification.family()
+                + " next=" + classification.nextAction()
+                + " evidence=" + classification.evidence()
+                + " laneActive=" + CompatibilityLane.active()
+                + " laneSequence=" + CompatibilityLane.currentSequence()
+                + " throwable=" + throwable.getClass().getName()
+                + ": " + safe(throwable.getMessage())
+                + " note=listener-failure-preserved-during-synthetic-dispatch-owner-exit-needed", throwable);
+    }
+
+    static void promotionCandidate(String sourceApi, RouteFamily routeFamily,
+                                   String family, String nextAction, String detail,
+                                   CompatibilityContext.Frame frame) {
+        if (frame == null) return;
+        info("[FBB promotion-candidate] source=" + frame.kind()
+                + " state=" + frame.state()
+                + " shared=" + frame.shared()
+                + " api=" + safe(sourceApi)
+                + " route=" + routeFamily.label()
+                + " family=" + safe(family)
+                + " next=" + safe(nextAction)
+                + " status=observed-not-promoted"
+                + " detail=" + safe(detail)
+                + " note=known-route-exit-seen-inside-compatibility-context");
+    }
+
     static void compatibilityFailure(Throwable throwable) {
         if (throwable == null) return;
         NmsCompatModel.fromThrowable(throwable).ifPresent(report -> {
@@ -660,6 +834,11 @@ final class BridgeDiagnostics {
         if (value == null) return "unknown";
         String compact = value.replace('\n', ' ').replace('\r', ' ');
         return compact.length() <= max ? compact : compact.substring(0, max) + "...";
+    }
+
+    private static String safe(String value) {
+        if (value == null || value.isBlank()) return "unknown";
+        return PrivacySanitizer.text(value.replace('\n', ' ').replace('\r', ' '));
     }
 
     private static final class RepeatState {

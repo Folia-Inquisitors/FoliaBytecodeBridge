@@ -8,11 +8,11 @@ support for one plugin name or one command.
 
 Audited references:
 
-- `dynmap-3.0.zip`
+- `map plugin reference-3.0.zip`
 - `visibility-plugin-reference.zip`
-- `Essentials-2.x.zip`
+- `server-utility plugin reference-2.x.zip`
 - `world-editing-plugin-reference.zip`
-- live `UltimateHomes-3.1.jar`
+- live `home plugin reference-3.1.jar`
 
 The source zips were extracted under `target/audit-inputs-tar/` for local grep
 only. That folder is not part of the runtime bridge.
@@ -50,13 +50,13 @@ major difference is whether FoliaBytecodeBridge rewrote the bytecode.
 
 | Route | Seen in references | Probe coverage |
 | --- | --- | --- |
-| `S_GLOBAL` / `S_ASYNC` | visibility plugin reference `BukkitRunnable`, Essentials scheduler wrappers, dynmap sync delayed/repeating tasks, world-editing reference task manager | Main smoke fixture already covers scheduler overloads; probe focuses on direct unsafe API families. |
-| `A_ENTITY` | UltimateHomes and world-editing reference direct `Player#teleport(Location)`, adapter-style `teleportAsync`, visibility plugin reference velocity/game mode/potion calls, Essentials projectile/entity commands | `Player#getLocation`, `Player#getWorld`, direct teleport overloads, velocity, game mode, potion add/remove, audio. |
-| `B_REGION_LOCATION` | dynmap block/chunk reads, Essentials drops/explosions/lightning/spawn/tree, world-editing reference world/drop/tree access | world block/chunk lookup, loaded chunks, lightning, zero-power explosions, drops, spawn, tree generation. |
-| `C_REGION_BLOCK` | Essentials sign/block commands, world-editing reference block access, dynmap block reads | block location, same-material block set, block-owned chunk lookup. |
-| `D_PLAYER_UI` | visibility plugin reference silent chest, Essentials disposal/enderchest/invsee/sign inventories | open/close inventory. |
-| `F_PLAYER_VISIBILITY` | visibility plugin reference hide/show utility, Essentials vanish interactions | plugin-aware and legacy hide/show overloads. |
-| `G_WORLD_SCAN_SPLIT` | dynmap and world-editing reference world/entity scans, Essentials `/gc` and remove scans | player nearby scan, world nearby scan, world entity scans, chunk entity scan. |
+| `S_GLOBAL` / `S_ASYNC` | visibility plugin reference `BukkitRunnable`, server-utility plugin reference scheduler wrappers, map plugin reference sync delayed/repeating tasks, world-editing reference task manager | Main smoke fixture already covers scheduler overloads; probe focuses on direct unsafe API families. |
+| `A_ENTITY` | home plugin reference and world-editing reference direct `Player#teleport(Location)`, adapter-style `teleportAsync`, visibility plugin reference velocity/game mode/potion calls, server-utility plugin reference projectile/entity commands | `Player#getLocation`, `Player#getWorld`, direct teleport overloads, velocity, game mode, potion add/remove, audio. |
+| `B_REGION_LOCATION` | map plugin reference block/chunk reads, server-utility plugin reference drops/explosions/lightning/spawn/tree, world-editing reference world/drop/tree access | world block/chunk lookup, loaded chunks, lightning, zero-power explosions, drops, spawn, tree generation. |
+| `C_REGION_BLOCK` | server-utility plugin reference sign/block commands, world-editing reference block access, map plugin reference block reads | block location, same-material block set, block-owned chunk lookup. |
+| `D_PLAYER_UI` | visibility plugin reference silent chest, server-utility plugin reference disposal/enderchest/invsee/sign inventories | open/close inventory. |
+| `F_PLAYER_VISIBILITY` | visibility plugin reference hide/show utility, server-utility plugin reference vanish interactions | plugin-aware and legacy hide/show overloads. |
+| `G_WORLD_SCAN_SPLIT` | map plugin reference and world-editing reference world/entity scans, server-utility plugin reference `/gc` and remove scans | player nearby scan, world nearby scan, world entity scans, chunk entity scan. |
 
 ## Promotion Rule
 

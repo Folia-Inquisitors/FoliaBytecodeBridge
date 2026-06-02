@@ -33,6 +33,37 @@ The adapter emits `[FBB helper-visibility]` diagnostics so a failed visibility
 path is visible before it turns into `NoClassDefFoundError` inside a rewritten
 plugin class.
 
+## Compatibility Context
+
+Some compatibility problems are not a single unsafe Bukkit method. Legacy code
+may enter a shared synchronous event chain or an unknown internal path before a
+known route family appears. `CompatibilityContext` records that boundary without
+pretending it is a Folia owner.
+
+`CompatibilityLane` is the first serialized lane for compatibility-sensitive
+unknown behavior. It is intentionally not a Folia owner thread. Code inside the
+lane may preserve ordering for a modeled legacy path, but Bukkit/world/entity
+access still has to exit through a known route family before it is considered a
+Folia-safe operation.
+
+`SyntheticEventPathBridge` is the first clean hook for future event-path
+transformers. It enters the compatibility lane, opens a compatibility context,
+preserves evidence about listener order and event state, and lets normal
+bytecode routes log `[FBB promotion-candidate]` when a known API edge appears
+inside the modeled path.
+
+`SyntheticEventDispatchBridge` is the first real entry point into that model.
+The raw transformer rewrites the exact
+`PluginManager#callEvent(Event)` bytecode shape through `UnsafeCallBridge`.
+Built-in Bukkit/Paper events pass through to the original plugin manager.
+Custom sync plugin events are dispatched through the compatibility lane so the
+shared listener chain can preserve ordering while known API calls inside
+listeners still exit through normal route families.
+
+Unknown does not route to global by default. `S_GLOBAL` is for server/global
+ownership. Unknown paths stay in compatibility evidence until an owner can be
+proven.
+
 ## Transform Scope
 
 The transformer rewrites known Bukkit scheduler API calls:

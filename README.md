@@ -16,6 +16,8 @@ https://discord.gg/aT9z7q7hX8
 
 See the `docs/` folder for architecture notes, route families, diagnostics, probes, and smoke-test details.
 
+The synthetic compatibility/event-path model is documented at [`docs/SYNTHETIC_COMPATIBILITY_MODEL.md`](docs/SYNTHETIC_COMPATIBILITY_MODEL.md).
+
 The previous detailed README was preserved at [`docs/TECHNICAL_README.md`](docs/TECHNICAL_README.md).
 
 

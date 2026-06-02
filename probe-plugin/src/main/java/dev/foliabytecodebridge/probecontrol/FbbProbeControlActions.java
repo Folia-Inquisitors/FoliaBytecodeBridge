@@ -3,6 +3,7 @@ package dev.foliabytecodebridge.probecontrol;
 import dev.fbbprobe.harness.ProbeActions;
 import dev.fbbprobe.harness.ProbeRuntime;
 import dev.fbbprobe.harness.GlobalModelProbeEvent;
+import dev.fbbprobe.harness.SharedEventPathProbeEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
@@ -189,6 +190,23 @@ public final class FbbProbeControlActions implements ProbeActions {
                     Bukkit.getPluginManager().callEvent(event);
                     return "event=" + event.getClass().getName()
                             + " cancellable=false handlers=" + event.getHandlers().getRegisteredListeners().length;
+                });
+        runtime.probeModel("synthetic-event-path", "S_GLOBAL", "PluginManager#callEvent(Event)",
+                "org.bukkit.plugin.PluginManager", "callEvent", "(Lorg/bukkit/event/Event;)V",
+                "shared-synchronous-event-chain", "void", false,
+                () -> {
+                    SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                            "startup-auto", "startup", "control-untransformed");
+                    Bukkit.getPluginManager().callEvent(event);
+                    return "event=" + event.getClass().getName()
+                            + " cancellable=true shared=true"
+                            + " handlers=" + event.getHandlers().getRegisteredListeners().length
+                            + " cancelled=" + event.isCancelled()
+                            + " effects=" + event.effects().size()
+                            + " effectsList=" + String.join(",", event.effects())
+                            + " lane=single-thread-compatibility"
+                            + " model=synthetic-event-path"
+                            + " promotion=observed-not-promoted";
                 });
     }
 

@@ -13,13 +13,17 @@ import org.bukkit.TreeType;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
@@ -37,6 +41,7 @@ import smoketest.shaded.GenericTeleportSchedulerLike;
 import smoketest.shaded.GenericTeleportSchedulerLikeImpl;
 import smoketest.shaded.PaperLibLike;
 
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 
@@ -97,6 +102,10 @@ final class SmokeTarget {
 
     static boolean runServerCommandDispatch(Server server, CommandSender sender) {
         return server.dispatchCommand(sender, "fbb_smoke_unknown");
+    }
+
+    static void runCustomEventDispatch(PluginManager pluginManager) {
+        pluginManager.callEvent(new SmokeSharedEvent());
     }
 
     static void runMethodReferenceUnsafeCalls(World world) {
@@ -409,5 +418,173 @@ final class SmokeTarget {
         team.addEntry(player.getName());
         team.removeEntry(player.getName());
         player.setScoreboard(scoreboard);
+    }
+
+    public static final class SmokeSharedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeNoOwnerEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        public String reason() {
+            return "no-owner-getter";
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeEntityOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final Entity entity;
+
+        public SmokeEntityOwnedEvent(Entity entity) {
+            this.entity = entity;
+        }
+
+        public Entity getEntity() {
+            return entity;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeMultiBlockCollectionOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final List<Block> blocks;
+
+        public SmokeMultiBlockCollectionOwnedEvent(List<Block> blocks) {
+            this.blocks = blocks;
+        }
+
+        public List<Block> getBlocks() {
+            return blocks;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeSingleBlockOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final Block block;
+
+        public SmokeSingleBlockOwnedEvent(Block block) {
+            this.block = block;
+        }
+
+        public Block getBlock() {
+            return block;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeDelegatedBlockOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final Event originalEvent;
+
+        public SmokeDelegatedBlockOwnedEvent(Event originalEvent) {
+            this.originalEvent = originalEvent;
+        }
+
+        public Event getOriginalEvent() {
+            return originalEvent;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeBlockCollectionOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final List<Block> blocks;
+
+        public SmokeBlockCollectionOwnedEvent(List<Block> blocks) {
+            this.blocks = blocks;
+        }
+
+        public List<Block> getBlocks() {
+            return blocks;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
+    }
+
+    public static final class SmokeLocationOwnedEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        private final Location location;
+
+        public SmokeLocationOwnedEvent(Location location) {
+            this.location = location;
+        }
+
+        public Location getLocation() {
+            return location;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+
+        public static HandlerList getHandlerList() {
+            return HANDLERS;
+        }
     }
 }

@@ -204,7 +204,7 @@ Expected output:
 SMOKE_OK bridgeCalls=22 unsafeCalls=95 bytecodeJars=2 bytecodeClasses=2394 bytecodeRequiredHits=79 knownGapHits={world-spawnEntity=2} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=1
 ```
 
-This means the Java agent transformed the fixture, routed scheduler calls through `SchedulerBridge`, routed high-risk direct calls through `UnsafeCallBridge`, proved the metadata overlay gate when `metadataOverlay=all` is supplied before `-javaagent`, and found the expected kit plugin reference/EssentialsX bytecode call families in the built jars.
+This means the Java agent transformed the fixture, routed scheduler calls through `SchedulerBridge`, routed high-risk direct calls through `UnsafeCallBridge`, proved the metadata overlay gate when `metadataOverlay=all` is supplied before `-javaagent`, and found the expected kit plugin reference/server-utility plugin reference bytecode call families in the built jars.
 
 The local smoke command uses `-Dfoliabytecodebridge.forceNonFolia=true` because it is not running inside a real Bukkit/Folia server. It also uses `-Dfoliabytecodebridge.smokeNoPassthrough=true` so inherited `BukkitRunnable` calls can be tested without Bukkit scheduler state.
 

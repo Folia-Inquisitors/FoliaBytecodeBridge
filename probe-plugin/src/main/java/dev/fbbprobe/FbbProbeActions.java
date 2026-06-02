@@ -3,6 +3,10 @@ package dev.fbbprobe;
 import dev.fbbprobe.harness.ProbeActions;
 import dev.fbbprobe.harness.ProbeRuntime;
 import dev.fbbprobe.harness.GlobalModelProbeEvent;
+import dev.fbbprobe.harness.SharedBlockCollectionProbeEvent;
+import dev.fbbprobe.harness.SharedEventPathProbeEvent;
+import dev.foliabytecodebridge.SyntheticEventDispatchBridge;
+import dev.foliabytecodebridge.SyntheticEventPathBridge;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
@@ -34,6 +38,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 public final class FbbProbeActions implements ProbeActions {
@@ -215,6 +220,93 @@ public final class FbbProbeActions implements ProbeActions {
                     Bukkit.getPluginManager().callEvent(event);
                     return "event=" + event.getClass().getName()
                             + " cancellable=false handlers=" + event.getHandlers().getRegisteredListeners().length;
+                });
+        runtime.probeModel("synthetic-event-path", "S_GLOBAL", "SyntheticEventPathBridge#call(...)",
+                "dev.foliabytecodebridge.SyntheticEventPathBridge", "call",
+                "(Ljava/lang/String;ZILjava/lang/String;Ljava/util/concurrent/Callable;)Ljava/lang/Object;",
+                "shared-synchronous-event-chain", "void", false,
+                () -> {
+                    SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                            "startup-auto", "startup", "target-transformed");
+                    return SyntheticEventPathBridge.call(event.getClass().getName(), true, 3,
+                            "probe-modeled-shared-event-path", () -> {
+                                SyntheticEventPathBridge.observeListener(event.getClass().getName(),
+                                        "FBBProbeSyntheticLane", "LOWEST", "observe-before-mutation", event.isCancelled());
+                                event.addEffect("begin-observed");
+                                SyntheticEventPathBridge.observeListener(event.getClass().getName(),
+                                        "FBBProbeSyntheticLane", "NORMAL", "mutate-shared-event-state", true);
+                                event.addEffect("normal-mutated-cancelled");
+                                event.setCancelled(true);
+                                SyntheticEventPathBridge.observeListener(event.getClass().getName(),
+                                        "FBBProbeSyntheticLane", "MONITOR", "read-final-shared-event-state", event.isCancelled());
+                                event.addEffect("monitor-read");
+                                return "event=" + event.getClass().getName()
+                                        + " cancellable=true shared=true"
+                                        + " handlers=modeled"
+                                        + " cancelled=" + event.isCancelled()
+                                        + " effects=" + event.effects().size()
+                                        + " effectsList=" + String.join(",", event.effects())
+                                        + " lane=single-thread-compatibility"
+                                        + " laneActive=" + SyntheticEventPathBridge.isCompatibilityLaneThread()
+                                        + " laneSequence=" + SyntheticEventPathBridge.compatibilityLaneSequence()
+                                        + " model=synthetic-event-path"
+                                        + " promotion=observed-not-promoted";
+                            });
+                });
+        runtime.probeModel("synthetic-event-listener-exit", "A_ENTITY", "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-listener-entity-owner-exit", "void", false,
+                () -> {
+                    SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                            "startup-auto", "startup", "target-transformed", true);
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " cancellable=true shared=true"
+                            + " route=A_ENTITY"
+                            + " family=entity"
+                            + " expectedFailure=listener-entity-owner-exit-needed"
+                            + " dispatch=synthetic"
+                            + " effects=" + event.effects().size()
+                            + " effectsList=" + String.join(",", event.effects())
+                            + " note=deliberate-classifier-proof-not-real-entity-access";
+                });
+        runtime.probeModel("synthetic-event-no-owner", "S_GLOBAL", "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-no-owner-stays-serialized", "void", false,
+                () -> {
+                    SharedEventPathProbeEvent event = new SharedEventPathProbeEvent(
+                            "startup-auto", "startup-no-owner", "target-transformed");
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " routeFamily=UNKNOWN"
+                            + " expected=synthetic-owner-miss"
+                            + " lane=single-thread-compatibility"
+                            + " note=no-compatible-owner-getter";
+                });
+        runtime.probeModel("synthetic-event-multi-region-blocks", "S_GLOBAL",
+                "SyntheticEventDispatchBridge#callEvent(Event)",
+                "dev.foliabytecodebridge.SyntheticEventDispatchBridge", "callEvent",
+                "(Lorg/bukkit/plugin/PluginManager;Lorg/bukkit/event/Event;)V",
+                "shared-event-multi-region-blocks-stay-serialized", "void", false,
+                () -> {
+                    if (Bukkit.getWorlds().isEmpty()) {
+                        return "blocked=no-world-loaded expected=synthetic-owner-miss";
+                    }
+                    World world = Bukkit.getWorlds().get(0);
+                    Location spawn = world.getSpawnLocation();
+                    Block first = world.getBlockAt(spawn);
+                    Block second = world.getBlockAt(spawn.getBlockX() + 32, spawn.getBlockY(), spawn.getBlockZ());
+                    SharedBlockCollectionProbeEvent event = new SharedBlockCollectionProbeEvent(
+                            "startup-auto", "startup-multi-region", List.of(first, second));
+                    SyntheticEventDispatchBridge.callEvent(Bukkit.getPluginManager(), event);
+                    return "event=" + event.getClass().getName()
+                            + " routeFamily=UNKNOWN"
+                            + " expected=synthetic-owner-miss"
+                            + " miss=multi-region-collection"
+                            + " blockCount=2"
+                            + " lane=single-thread-compatibility";
                 });
     }
 

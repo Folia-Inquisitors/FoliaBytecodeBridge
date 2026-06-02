@@ -13,16 +13,26 @@ import dev.foliabytecodebridge.RawSchedulerTransformerSmoke;
 import dev.foliabytecodebridge.RepeatDiagnosticsSmoke;
 import dev.foliabytecodebridge.ServerExecutorBridge;
 import dev.foliabytecodebridge.ServerMemberMap;
+import dev.foliabytecodebridge.SyntheticEventDispatchBridge;
+import dev.foliabytecodebridge.SyntheticEventPathBridge;
 import dev.foliabytecodebridge.UnsafeCallBridge;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LightningStrike;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventException;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.PluginDescriptionFile;
+import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
@@ -80,12 +90,13 @@ public final class SmokeMain {
         SmokeTarget.runMethodReferenceUnsafeCalls(world);
         SmokeTarget.runPluginShapeUnsafeCalls(player, plugin);
         SmokeTarget.runScoreboardManagerShapeCalls(fakeScoreboardManager(), player);
+        SmokeTarget.runCustomEventDispatch(fakePluginManager());
         runTaskFailureProbe(plugin);
         Path[] pluginJars = pluginJars();
         BytecodeInventorySmoke.Result inventory = BytecodeInventorySmoke.scan(pluginJars);
         int rawInheritedOwnerHits = RawSchedulerTransformerSmoke.assertInheritedBukkitRunnableAsync(pluginJars);
         int rawAnonymousOverrideHits = RawSchedulerTransformerSmoke.assertAnonymousRunnableOverride(pluginJars);
-        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertEssentialsHelperNotMisclassified(pluginJars);
+        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertserver-utility plugin referenceHelperNotMisclassified(pluginJars);
         int rawLegacyAsyncRepeatingHits = RawSchedulerTransformerSmoke.assertLegacyAsyncRepeatingScheduler(pluginJars);
         int rawCommandDispatchHits = RawServerCommandTransformerSmoke.assertSmokeTargetCommandDispatch();
         InstructionRouteScanner.RouteReport routeReport = runInstructionRouteScannerSmoke();
@@ -97,6 +108,15 @@ public final class SmokeMain {
         String mcUtilExecutorEvidence = RawMcUtilExecutorTransformerSmoke.assertMcUtilMainExecutorRewrite();
         String nmsServerExecutorEvidence = RawNmsServerExecutorTransformerSmoke.assertMinecraftServerExecuteRewrite();
         RepeatDiagnosticsSmoke.emitRepeatSummaryEvidence();
+        String compatibilityLaneEvidence = runCompatibilityLaneSmoke();
+        String listenerRouteExitEvidence = runSyntheticListenerFailureClassifierSmoke(plugin);
+        String entityOwnedRouteExitEvidence = runSyntheticEntityOwnedRouteExitSmoke(plugin, player);
+        String blockOwnedRouteExitEvidence = runSyntheticBlockOwnedRouteExitSmoke(plugin, fakeBlock(world));
+        String delegatedBlockRouteExitEvidence = runSyntheticDelegatedBlockRouteExitSmoke(plugin, fakeBlock(world));
+        String locationOwnedRouteExitEvidence = runSyntheticLocationOwnedRouteExitSmoke(plugin,
+                new Location(world, 12, 64, 12));
+        String noOwnerSerializedEvidence = runSyntheticNoOwnerSerializedSmoke();
+        String multiRegionSerializedEvidence = runSyntheticMultiRegionSerializedSmoke(world);
 
         logs.assertOnlyOfficialRoutes();
         logs.require("[FBB scheduler]", RouteFamily.S_GLOBAL);
@@ -147,6 +167,9 @@ public final class SmokeMain {
         logs.requireContains("[FBB model]", "route=S_GLOBAL",
                 "api=net.minecraft.server.MinecraftServer#execute",
                 "routeRulePolicy=VOID_FIRE_AND_FORGET",
+                "routeRuleStatus=EXPERIMENTAL_REWRITE");
+        logs.requireContains("[FBB model]", "route=S_GLOBAL",
+                "api=org.bukkit.plugin.PluginManager#callEvent",
                 "routeRuleStatus=EXPERIMENTAL_REWRITE");
         logs.requireContains("[FBB repeat-summary]", "channel=unsafe-call",
                 "suppressedSinceLast=", "latest=[FBB unsafe-call]");
@@ -271,6 +294,76 @@ public final class SmokeMain {
                 "route=D_PLAYER_UI", "next=scoreboard-model-score-mutation");
         logs.requireContains("[FBB transform]", "class=smoketest.SmokeTarget",
                 "path=raw-command-dispatch", "result=patched", "replacements=2");
+        logs.requireContains("[FBB guard-path]", "owner=org.bukkit.plugin.PluginManager",
+                "name=callEvent", "descriptor=(Lorg/bukkit/event/Event;)V",
+                "route=S_GLOBAL", "action=rewritten");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-start",
+                "event=smoketest.SmokeTarget$SmokeSharedEvent", "result=dispatching");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-finish",
+                "event=smoketest.SmokeTarget$SmokeSharedEvent", "result=completed");
+        logs.requireContains("[FBB compatibility-lane]", "action=submit",
+                "source=synthetic-event-path:smoketest.SharedEvent", "result=queued");
+        logs.requireContains("[FBB compatibility-lane]", "action=start",
+                "source=synthetic-event-path:smoketest.SharedEvent", "result=running");
+        logs.requireContains("[FBB compatibility-lane]", "action=finish",
+                "source=synthetic-event-path:smoketest.SharedEvent", "result=completed");
+        logs.requireContains("[FBB compatibility-context]", "action=enter",
+                "kind=synthetic-event-path", "source=smoketest.SharedEvent",
+                "policy=synthetic-model");
+        logs.requireContains("[FBB event-listener]", "event=smoketest.SharedEvent",
+                "phase=MONITOR", "effect=read-final-state", "laneActive=true");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=listener-failure",
+                "event=smoketest.SmokeTarget$SmokeSharedEvent",
+                "route=A_ENTITY", "family=entity",
+                "next=listener-entity-owner-exit-needed",
+                "evidence=entity-state-guard",
+                "note=listener-failure-preserved-during-synthetic-dispatch-owner-exit-needed");
+        logs.requireContains("[FBB synthetic-event-route-exit]", "action=current-owner",
+                "event=smoketest.SmokeTarget$SmokeEntityOwnedEvent",
+                "route=A_ENTITY", "family=entity",
+                "next=listener-entity-owner-exit",
+                "ownerMethod=getEntity", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-start",
+                "event=smoketest.SmokeTarget$SmokeEntityOwnedEvent",
+                "route=A_ENTITY", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-route-exit]", "action=current-owner",
+                "event=smoketest.SmokeTarget$SmokeBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK", "family=region",
+                "next=listener-block-owner-exit",
+                "ownerMethod=getBlocks", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-start",
+                "event=smoketest.SmokeTarget$SmokeBlockCollectionOwnedEvent",
+                "route=C_REGION_BLOCK", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-route-exit]", "action=current-owner",
+                "event=smoketest.SmokeTarget$SmokeDelegatedBlockOwnedEvent",
+                "route=C_REGION_BLOCK", "family=region",
+                "ownerMethod=delegate:getOriginalEvent.getBlock", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-start",
+                "event=smoketest.SmokeTarget$SmokeDelegatedBlockOwnedEvent",
+                "route=C_REGION_BLOCK", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-route-exit]", "action=current-owner",
+                "event=smoketest.SmokeTarget$SmokeLocationOwnedEvent",
+                "route=B_REGION_LOCATION", "family=region",
+                "next=listener-location-owner-exit",
+                "ownerMethod=getLocation", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-dispatch]", "action=synthetic-start",
+                "event=smoketest.SmokeTarget$SmokeLocationOwnedEvent",
+                "route=B_REGION_LOCATION", "path=direct-current-owner");
+        logs.requireContains("[FBB synthetic-event-state]", "action=serialized",
+                "event=smoketest.SmokeTarget$SmokeNoOwnerEvent",
+                "ownerStatus=owner-missed", "laneStatus=serialized-compatibility-lane");
+        logs.requireContains("[FBB synthetic-owner-miss]",
+                "event=smoketest.SmokeTarget$SmokeNoOwnerEvent",
+                "no-compatible-owner-getter");
+        logs.requireContains("[FBB synthetic-event-state]", "action=serialized",
+                "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
+                "ownerStatus=owner-missed", "laneStatus=serialized-compatibility-lane");
+        logs.requireContains("[FBB synthetic-owner-miss]",
+                "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
+                "getBlocks:multi-region-collection");
+        logs.requireContains("[FBB synthetic-listener-route-exit]",
+                "event=smoketest.SmokeTarget$SmokeEntityOwnedEvent",
+                "route=A_ENTITY", "listener=SmokePlugin/");
 
         int calls = SchedulerBridge.bridgeCallCount();
         int unsafeCalls = UnsafeCallBridge.unsafeCallCount();
@@ -295,7 +388,185 @@ public final class SmokeMain {
                 + " nmsSyntheticMemberEvidence=" + nmsSyntheticMemberEvidence
                 + " legacyMainThreadEvidence=" + legacyMainThreadEvidence
                 + " mcUtilExecutorEvidence=" + mcUtilExecutorEvidence
-                + " nmsServerExecutorEvidence=" + nmsServerExecutorEvidence);
+                + " nmsServerExecutorEvidence=" + nmsServerExecutorEvidence
+                + " compatibilityLaneEvidence=" + compatibilityLaneEvidence
+                + " listenerRouteExitEvidence=" + listenerRouteExitEvidence
+                + " entityOwnedRouteExitEvidence=" + entityOwnedRouteExitEvidence
+                + " blockOwnedRouteExitEvidence=" + blockOwnedRouteExitEvidence
+                + " delegatedBlockRouteExitEvidence=" + delegatedBlockRouteExitEvidence
+                + " locationOwnedRouteExitEvidence=" + locationOwnedRouteExitEvidence
+                + " noOwnerSerializedEvidence=" + noOwnerSerializedEvidence
+                + " multiRegionSerializedEvidence=" + multiRegionSerializedEvidence);
+    }
+
+    private static String runCompatibilityLaneSmoke() {
+        return SyntheticEventPathBridge.call("smoketest.SharedEvent", true, 3,
+                "smoke-modeled-shared-event-path", () -> {
+                    List<String> effects = new ArrayList<>();
+                    if (!SyntheticEventPathBridge.isCompatibilityLaneThread()) {
+                        throw new IllegalStateException("Synthetic event path did not enter compatibility lane");
+                    }
+                    SyntheticEventPathBridge.observeListener("smoketest.SharedEvent",
+                            "smoketest.ListenerA", "LOWEST", "observe-before-mutation", false);
+                    effects.add("begin-observed");
+                    SyntheticEventPathBridge.observeListener("smoketest.SharedEvent",
+                            "smoketest.ListenerB", "NORMAL", "mutate-cancelled", true);
+                    effects.add("normal-mutated-cancelled");
+                    SyntheticEventPathBridge.observeListener("smoketest.SharedEvent",
+                            "smoketest.ListenerC", "MONITOR", "read-final-state", true);
+                    effects.add("monitor-read");
+                    if (!effects.equals(List.of("begin-observed", "normal-mutated-cancelled", "monitor-read"))) {
+                        throw new IllegalStateException("Synthetic event lane ordering changed: " + effects);
+                    }
+                    return "synthetic-event-lane-sequence";
+                });
+    }
+
+    private static String runSyntheticListenerFailureClassifierSmoke(Plugin plugin) {
+        Listener listener = new Listener() {
+        };
+        EventExecutor executor = (ignored, event) -> {
+            throw new EventException(new IllegalStateException(
+                    "Thread failed main thread check: Accessing entity state off owning region's thread, "
+                            + "context=[thread=Thread[#1,FBB-compatibility-lane,8,Folia Region Scheduler ThreadGroup],"
+                            + "class=java.lang.Thread], entity={root=[{type=Arrow,id=1}]}"));
+        };
+        RegisteredListener registered = new RegisteredListener(
+                listener, executor, EventPriority.NORMAL, plugin, false);
+        HandlerList handlers = SmokeTarget.SmokeSharedEvent.getHandlerList();
+        handlers.register(registered);
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(), new SmokeTarget.SmokeSharedEvent());
+            return "listener-failure-route-exit-classified";
+        } finally {
+            handlers.unregister(registered);
+        }
+    }
+
+    private static String runSyntheticEntityOwnedRouteExitSmoke(Plugin plugin, Entity entity) {
+        Listener listener = new Listener() {
+        };
+        List<String> effects = new ArrayList<>();
+        EventExecutor executor = (ignored, event) -> {
+            if (event instanceof SmokeTarget.SmokeEntityOwnedEvent ownedEvent
+                    && ownedEvent.getEntity() == entity) {
+                effects.add("entity-owned-listener");
+            }
+        };
+        RegisteredListener registered = new RegisteredListener(
+                listener, executor, EventPriority.NORMAL, plugin, false);
+        HandlerList handlers = SmokeTarget.SmokeEntityOwnedEvent.getHandlerList();
+        handlers.register(registered);
+        System.setProperty("foliabytecodebridge.smokeCurrentEntityOwner", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(), new SmokeTarget.SmokeEntityOwnedEvent(entity));
+            if (!effects.equals(List.of("entity-owned-listener"))) {
+                throw new IllegalStateException("Synthetic entity route-exit listener did not run: " + effects);
+            }
+            return "entity-owned-synthetic-route-exit";
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeCurrentEntityOwner");
+            handlers.unregister(registered);
+        }
+    }
+
+    private static String runSyntheticBlockOwnedRouteExitSmoke(Plugin plugin, Block block) {
+        Listener listener = new Listener() {
+        };
+        List<String> effects = new ArrayList<>();
+        EventExecutor executor = (ignored, event) -> {
+            if (event instanceof SmokeTarget.SmokeBlockCollectionOwnedEvent ownedEvent
+                    && ownedEvent.getBlocks().contains(block)) {
+                effects.add("block-owned-listener");
+            }
+        };
+        RegisteredListener registered = new RegisteredListener(
+                listener, executor, EventPriority.NORMAL, plugin, false);
+        HandlerList handlers = SmokeTarget.SmokeBlockCollectionOwnedEvent.getHandlerList();
+        handlers.register(registered);
+        System.setProperty("foliabytecodebridge.smokeCurrentBlockOwner", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                    new SmokeTarget.SmokeBlockCollectionOwnedEvent(List.of(block)));
+            if (!effects.equals(List.of("block-owned-listener"))) {
+                throw new IllegalStateException("Synthetic block route-exit listener did not run: " + effects);
+            }
+            return "block-owned-synthetic-route-exit";
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeCurrentBlockOwner");
+            handlers.unregister(registered);
+        }
+    }
+
+    private static String runSyntheticDelegatedBlockRouteExitSmoke(Plugin plugin, Block block) {
+        Listener listener = new Listener() {
+        };
+        List<String> effects = new ArrayList<>();
+        EventExecutor executor = (ignored, event) -> {
+            if (event instanceof SmokeTarget.SmokeDelegatedBlockOwnedEvent delegated
+                    && delegated.getOriginalEvent() instanceof SmokeTarget.SmokeSingleBlockOwnedEvent original
+                    && original.getBlock() == block) {
+                effects.add("delegated-block-owned-listener");
+            }
+        };
+        RegisteredListener registered = new RegisteredListener(
+                listener, executor, EventPriority.NORMAL, plugin, false);
+        HandlerList handlers = SmokeTarget.SmokeDelegatedBlockOwnedEvent.getHandlerList();
+        handlers.register(registered);
+        System.setProperty("foliabytecodebridge.smokeCurrentBlockOwner", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                    new SmokeTarget.SmokeDelegatedBlockOwnedEvent(
+                            new SmokeTarget.SmokeSingleBlockOwnedEvent(block)));
+            if (!effects.equals(List.of("delegated-block-owned-listener"))) {
+                throw new IllegalStateException("Synthetic delegated block route-exit listener did not run: " + effects);
+            }
+            return "delegated-block-owned-synthetic-route-exit";
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeCurrentBlockOwner");
+            handlers.unregister(registered);
+        }
+    }
+
+    private static String runSyntheticLocationOwnedRouteExitSmoke(Plugin plugin, Location location) {
+        Listener listener = new Listener() {
+        };
+        List<String> effects = new ArrayList<>();
+        EventExecutor executor = (ignored, event) -> {
+            if (event instanceof SmokeTarget.SmokeLocationOwnedEvent ownedEvent
+                    && ownedEvent.getLocation() == location) {
+                effects.add("location-owned-listener");
+            }
+        };
+        RegisteredListener registered = new RegisteredListener(
+                listener, executor, EventPriority.NORMAL, plugin, false);
+        HandlerList handlers = SmokeTarget.SmokeLocationOwnedEvent.getHandlerList();
+        handlers.register(registered);
+        System.setProperty("foliabytecodebridge.smokeCurrentLocationOwner", "true");
+        try {
+            SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                    new SmokeTarget.SmokeLocationOwnedEvent(location));
+            if (!effects.equals(List.of("location-owned-listener"))) {
+                throw new IllegalStateException("Synthetic location route-exit listener did not run: " + effects);
+            }
+            return "location-owned-synthetic-route-exit";
+        } finally {
+            System.clearProperty("foliabytecodebridge.smokeCurrentLocationOwner");
+            handlers.unregister(registered);
+        }
+    }
+
+    private static String runSyntheticNoOwnerSerializedSmoke() {
+        SyntheticEventDispatchBridge.callEvent(fakePluginManager(), new SmokeTarget.SmokeNoOwnerEvent());
+        return "no-owner-stayed-serialized";
+    }
+
+    private static String runSyntheticMultiRegionSerializedSmoke(World world) {
+        Block first = fakeBlock(world, 12, 64, 12);
+        Block second = fakeBlock(world, 48, 64, 12);
+        SyntheticEventDispatchBridge.callEvent(fakePluginManager(),
+                new SmokeTarget.SmokeMultiBlockCollectionOwnedEvent(List.of(first, second)));
+        return "multi-region-blocks-stayed-serialized";
     }
 
     private static String runServerMemberMapSmoke() {
@@ -321,7 +592,7 @@ public final class SmokeMain {
 
     private static String runNmsCompatModelSmoke() {
         List<String> lines = List.of(
-                "[Server thread/ERROR]: Error occurred while enabling WorldGuard v7.0.16+2355-f7fded2 (Is it up to date?)",
+                "[Server thread/ERROR]: Error occurred while enabling protection plugin reference v7.0.16+2355-f7fded2 (Is it up to date?)",
                 "java.lang.NoSuchFieldError: Class net.minecraft.server.MinecraftServer does not have member field 'int currentTick'",
                 "\tat world-editing-plugin-reference.jar//com.example.serveradapter.NativeWorldAccess.<init>(NativeWorldAccess.java:65) ~[?:?]"
         );
@@ -486,6 +757,10 @@ public final class SmokeMain {
                 });
     }
 
+    private static PluginManager fakePluginManager() {
+        return proxy(PluginManager.class, (proxy, method, args) -> defaultValue(method.getReturnType()));
+    }
+
     private static ScoreboardManager fakeScoreboardManager() {
         return (ScoreboardManager) Proxy.newProxyInstance(SmokeMain.class.getClassLoader(),
                 new Class<?>[]{ScoreboardManager.class},
@@ -534,9 +809,16 @@ public final class SmokeMain {
     }
 
     private static Block fakeBlock(World world) {
+        return fakeBlock(world, 12, 64, 12);
+    }
+
+    private static Block fakeBlock(World world, int x, int y, int z) {
         return proxy(Block.class, (proxy, method, args) -> {
             if ("getWorld".equals(method.getName())) return world;
-            if ("getLocation".equals(method.getName())) return new Location(world, 12, 64, 12);
+            if ("getLocation".equals(method.getName())) return new Location(world, x, y, z);
+            if ("getX".equals(method.getName())) return x;
+            if ("getY".equals(method.getName())) return y;
+            if ("getZ".equals(method.getName())) return z;
             return defaultValue(method.getReturnType());
         });
     }

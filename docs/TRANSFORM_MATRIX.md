@@ -59,7 +59,7 @@ These calls are rewritten to `UnsafeCallBridge` for logging and then passed thro
 | Original call family | Probe purpose |
 | --- | --- |
 | `Entity#getLocation`, `Entity#getWorld`, `Entity#teleport`, `Entity#teleportAsync`, `Entity#setVelocity` | Identify entity-owned operations that may need entity scheduler routing. Future failures from async futures are logged when the future completes exceptionally. |
-| `Player#getLocation`, `Player#getWorld`, `Player#teleport`, `Player#setGameMode`, `Player#setVelocity` | Identify player-owned operations that may need entity scheduler routing. Cause-aware teleport overloads are included for Essentials `/home` evidence. |
+| `Player#getLocation`, `Player#getWorld`, `Player#teleport`, `Player#setGameMode`, `Player#setVelocity` | Identify player-owned operations that may need entity scheduler routing. Cause-aware teleport overloads are included for server-utility plugin reference `/home` evidence. |
 | `Player#openInventory`, `Player#closeInventory`, `HumanEntity#openInventory`, `HumanEntity#closeInventory` | `D_PLAYER_UI` preemptive entity-owner route for player inventory/menu open and close. |
 | `HumanEntity#setGameMode` | Identify player state mutations that may need player/entity scheduler routing. |
 | `Player#addPotionEffect`, `Player#removePotionEffect`, `LivingEntity#addPotionEffect`, `LivingEntity#removePotionEffect` | `A_ENTITY` preemptive owner-check route. If the current Folia thread does not own the receiver, the bridge schedules the mutation on that entity's scheduler before calling Bukkit. |

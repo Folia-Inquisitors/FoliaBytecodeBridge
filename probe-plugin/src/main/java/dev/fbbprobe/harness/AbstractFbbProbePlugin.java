@@ -7,6 +7,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -113,6 +114,87 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
                 + " contexts=" + firstJoinContexts()
                 + " player=" + player.getName() + " modes=" + modes);
         runFirstJoinModes(player, firstJoinContexts(), modes);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onSharedEventPathBegin(SharedEventPathProbeEvent event) {
+        event.addEffect("begin-observed");
+        probeInfo("[FBB synthetic-event-probe] phase=LOWEST"
+                + " root=/" + rootCommand()
+                + " bridgeRole=" + bridgeRole()
+                + " event=" + event.getClass().getName()
+                + " trigger=" + event.trigger()
+                + " context=" + event.context()
+                + " route=S_GLOBAL"
+                + " lane=single-thread-compatibility"
+                + " model=synthetic-event-path"
+                + " shared=true"
+                + " action=observe-before-mutation"
+                + " cancelled=" + event.isCancelled()
+                + " effects=" + event.effects().size());
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onSharedEventPathMutate(SharedEventPathProbeEvent event) {
+        event.addEffect("normal-mutated-cancelled");
+        event.setCancelled(true);
+        probeInfo("[FBB synthetic-event-probe] phase=NORMAL"
+                + " root=/" + rootCommand()
+                + " bridgeRole=" + bridgeRole()
+                + " event=" + event.getClass().getName()
+                + " trigger=" + event.trigger()
+                + " context=" + event.context()
+                + " route=S_GLOBAL"
+                + " lane=single-thread-compatibility"
+                + " model=synthetic-event-path"
+                + " shared=true"
+                + " action=mutate-shared-event-state"
+                + " effect=setCancelled"
+                + " cancelled=" + event.isCancelled()
+                + " effects=" + event.effects().size());
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
+    public void onSharedEventPathEntityOwnerExitProbe(SharedEventPathProbeEvent event) {
+        if (!event.entityOwnerExitProbe()) return;
+        event.addEffect("entity-owner-exit-probe");
+        probeWarning("[FBB synthetic-event-probe] phase=HIGH"
+                + " root=/" + rootCommand()
+                + " bridgeRole=" + bridgeRole()
+                + " event=" + event.getClass().getName()
+                + " trigger=" + event.trigger()
+                + " context=" + event.context()
+                + " route=A_ENTITY"
+                + " family=entity"
+                + " lane=single-thread-compatibility"
+                + " model=synthetic-event-path"
+                + " action=throw-entity-owner-guard"
+                + " next=listener-entity-owner-exit-needed"
+                + " evidence=probe-synthetic-entity-state-guard"
+                + " note=deliberate-probe-failure-for-route-exit-classification");
+        // This mimics Folia's entity-owner guard text without touching a real
+        // entity at startup. SyntheticEventDispatchBridge should preserve the
+        // failure and classify it as A_ENTITY route-exit evidence.
+        throw new IllegalStateException("Thread failed main thread check: Accessing entity state off owning region's thread");
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onSharedEventPathMonitor(SharedEventPathProbeEvent event) {
+        event.addEffect("monitor-read");
+        probeInfo("[FBB synthetic-event-probe] phase=MONITOR"
+                + " root=/" + rootCommand()
+                + " bridgeRole=" + bridgeRole()
+                + " event=" + event.getClass().getName()
+                + " trigger=" + event.trigger()
+                + " context=" + event.context()
+                + " route=S_GLOBAL"
+                + " lane=single-thread-compatibility"
+                + " model=synthetic-event-path"
+                + " shared=true"
+                + " action=read-final-shared-event-state"
+                + " cancelled=" + event.isCancelled()
+                + " effects=" + event.effects().size()
+                + " effectsList=" + String.join(",", event.effects()));
     }
 
     @Override
@@ -693,4 +775,3 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
         return Boolean.getBoolean(rootCommand() + ".firstJoinDestructive");
     }
 }
-

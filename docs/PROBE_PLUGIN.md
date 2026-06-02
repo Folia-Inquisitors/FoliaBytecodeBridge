@@ -21,7 +21,7 @@ keeps the baseline visible while making actual bridge misses easier to spot.
 
 ## Why It Exists
 
-The UltimateHomes `/home` failure taught us that a method can look covered in
+The home plugin reference `/home` failure taught us that a method can look covered in
 documentation while the raw bytecode path is only `trace-only`. The probe plugin
 turns that lesson into repeatable evidence:
 
@@ -138,7 +138,7 @@ player: global/server model candidates such as `Bukkit#getOnlinePlayers`,
 paths, detached scoreboard model paths, objective/score display-state mutations,
 team display/style/friendly-flag mutations, main-scoreboard lookup, world/chunk
 reads, typed world scans, chunk scans, chunk load/refresh probes, sound
-overloads, and zero-power explosions.
+overloads, zero-power explosions, and synthetic shared-event-path evidence.
 Player/entity methods still need first-join or manual commands because bytecode
 needs an actual entity owner. The startup bucket is the place to add future
 no-player evidence instead of adding more commands.
@@ -148,12 +148,19 @@ rewrite probes:
 
 ```text
 [FBB probe-model] group=global-model route=S_GLOBAL api=Bukkit#getOnlinePlayers status=probe-only rewrite=false ownerHint=server-global return=Collection<Player> syncReturnRisk=true result=completed size=<n>
-[FBB probe-model] group=event-model route=S_GLOBAL api=PluginManager#callEvent(Event) status=probe-only rewrite=false ownerHint=server-global-event-dispatch return=void syncReturnRisk=false result=<completed|failed> event=dev.fbbprobe.harness.GlobalModelProbeEvent ...
+[FBB probe-model] group=event-model route=S_GLOBAL api=PluginManager#callEvent(Event) status=probe-only rewrite=false ownerHint=server-global-event-dispatch return=void syncReturnRisk=false result=completed event=dev.fbbprobe.harness.GlobalModelProbeEvent ...
+[FBB synthetic-event-dispatch] action=<synthetic-start|synthetic-finish> event=... listeners=<n> note=custom-sync-event-compatibility-model
+[FBB probe-model] group=synthetic-event-path route=S_GLOBAL api=SyntheticEventPathBridge#call(...) status=probe-only rewrite=false ownerHint=shared-synchronous-event-chain ...
+[FBB compatibility-lane] action=<submit|start|finish> sequence=<n> source=synthetic-event-path:... note=serialized-compatibility-model-not-a-folia-owner-thread
+[FBB synthetic-event-probe] phase=MONITOR ... model=synthetic-event-path shared=true action=read-final-shared-event-state cancelled=true effectsList=...
 ```
 
-These lines are classification evidence only. They do not mean the bridge has
-promoted a rewrite for sync-return APIs such as `getOnlinePlayers`,
-`getWorlds`, `getPlayer`, or event dispatch.
+The `PluginManager#callEvent(Event)` shape is now an experimental rewrite for
+custom sync plugin events. Built-in Bukkit/Paper events still pass through to
+the original plugin manager. Other global/server candidates remain
+classification evidence only; they do not mean the bridge has promoted a
+rewrite for sync-return APIs such as `getOnlinePlayers`, `getWorlds`, or
+`getPlayer`.
 
 Startup probing can be changed with JVM properties:
 
@@ -192,6 +199,30 @@ failures can be compared against the transformed probe. In evidence summaries,
 these expected raw failures appear under `[FBB control-summary]` and
 `[FBB control-evidence]`; remaining `[FBB log-evidence]` lines are the ones to
 triage first.
+
+## Synthetic Event Path Probe
+
+Startup probes include a harmless modeled cancellable event path. The target
+probe enters `SyntheticEventPathBridge`, runs through the single-thread
+compatibility lane, records ordered listener-like observations, cancellation
+mutation, final state, and the shared effects list under
+`[FBB synthetic-event-probe]`.
+
+The control probe keeps raw `PluginManager#callEvent(Event)` behavior so the
+logs still show what Folia accepts or rejects without the modeled lane.
+
+The target startup probe also sends two negative wrapper cases through
+`SyntheticEventDispatchBridge`:
+
+- a no-owner custom event, expected to emit `[FBB synthetic-owner-miss]` with
+  `no-compatible-owner-getter`;
+- a multi-region block collection event, expected to emit
+  `multi-region-collection` and remain in the serialized compatibility lane.
+
+This is compatibility-model evidence only. It does not rewrite Bukkit event
+dispatch yet, and it does not claim that shared event paths are safe to split.
+It exists so future synthetic event-path work has a stable probe and clear log
+shape before any broad event transformer is attempted.
 
 ## First-Join Auto Probe
 

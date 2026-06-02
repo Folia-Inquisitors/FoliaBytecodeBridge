@@ -126,7 +126,7 @@ final class RawTeleportTransformer implements ClassFileTransformer {
 
         // Observed home/warp bytecode often builds a Location, applies block-centering math such as
         // Location#add(0.5, 0.0, 0.5), then calls Player#teleport(Location). Keep this generic to the
-        // Bukkit API owner and descriptor so UltimateHomes-style evidence becomes a reusable A_ENTITY path.
+        // Bukkit API owner and descriptor so home-command-style evidence becomes a reusable A_ENTITY path.
         if (("org/bukkit/entity/Entity".equals(owner) || "org/bukkit/entity/Player".equals(owner))
                 && "teleport".equals(name)
                 && (TELEPORT_LOCATION_DESCRIPTOR.equals(descriptor) || TELEPORT_CAUSE_DESCRIPTOR.equals(descriptor))) {

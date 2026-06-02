@@ -27,6 +27,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.event.Event;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scoreboard.Criteria;
@@ -83,6 +85,10 @@ public final class UnsafeCallBridge {
 
     public static boolean serverDispatchCommand(Server server, CommandSender sender, String command) {
         return dispatchCommand("Server#dispatchCommand(CommandSender,String)", server, sender, command);
+    }
+
+    public static void pluginManagerCallEvent(PluginManager pluginManager, Event event) {
+        SyntheticEventDispatchBridge.callEvent(pluginManager, event);
     }
 
     public static Location entityGetLocation(Entity entity) {
@@ -2525,6 +2531,8 @@ public final class UnsafeCallBridge {
     private static void markUnsafeCall(String sourceApi, RouteFamily route, String family, String nextAction, String detail) {
         UNSAFE_CALLS.incrementAndGet();
         BridgeDiagnostics.unsafeCall(sourceApi, route, family, nextAction, detail);
+        BridgeDiagnostics.promotionCandidate(sourceApi, route, family, nextAction, detail,
+                CompatibilityContext.current());
     }
 
     private static void markScoreboardModel(String sourceApi, String nextAction, String detail) {

@@ -1,5 +1,201 @@
 # Smoke Test Result
 
+## 2026-06-02 - Delegated Original Event Owner Route
+
+Custom wrapper events can now borrow an owner from `getOriginalEvent()` when the
+original event exposes a clear entity, block, block collection, or location
+owner. This is intended for generic wrapper/delegate event shapes. `getWorld()`
+alone is still not promoted because it does not identify a Folia region owner.
+
+Expected evidence:
+
+```text
+[FBB synthetic-event-state] action=route-exit event=smoketest.SmokeTarget$SmokeDelegatedBlockOwnedEvent route=C_REGION_BLOCK ownerMethod=delegate:getOriginalEvent.getBlock
+[FBB synthetic-event-route-exit] action=current-owner event=smoketest.SmokeTarget$SmokeDelegatedBlockOwnedEvent route=C_REGION_BLOCK ownerMethod=delegate:getOriginalEvent.getBlock
+[FBB synthetic-listener-route-exit] event=smoketest.SmokeTarget$SmokeDelegatedBlockOwnedEvent route=C_REGION_BLOCK
+```
+
+Smoke verification now appends:
+
+```text
+delegatedBlockRouteExitEvidence=delegated-block-owned-synthetic-route-exit
+```
+
+## 2026-06-02 - Synthetic Wrapper State And Owner Miss Evidence
+
+Added `SyntheticEventPathState` evidence so custom sync event dispatch reports
+whether the wrapper is scanning, exiting through a known owner route, or keeping
+the path serialized. Unknown/unproven shapes now use `route=none` plus
+`routeFamily=UNKNOWN` so they do not pollute the official `RouteFamily` map.
+
+Expected evidence:
+
+```text
+[FBB synthetic-event-state] action=scan-start route=none ownerStatus=scanning
+[FBB synthetic-event-state] action=route-exit route=A_ENTITY ownerStatus=owner-found
+[FBB synthetic-event-state] action=serialized route=none ownerStatus=owner-missed
+[FBB synthetic-owner-miss] route=none routeFamily=UNKNOWN ... no-compatible-owner-getter
+[FBB synthetic-owner-miss] route=none routeFamily=UNKNOWN ... getBlocks:multi-region-collection
+[FBB synthetic-listener-route-exit] route=A_ENTITY ... listener=SmokePlugin/...
+```
+
+Smoke command:
+
+```text
+java -Dfoliabytecodebridge.forceNonFolia=true -Dfoliabytecodebridge.metadataOverlay=all -Dfoliabytecodebridge.smokeNoPassthrough=true -Dfoliabytecodebridge.debug=true -Dfoliabytecodebridge.deepPluginJars=target\FBBProbe.jar;target\FBBProbeControl.jar -javaagent:target\FoliaBytecodeBridge.jar -cp <smoke classpath> smoketest.SmokeMain
+```
+
+Result:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 ... entityOwnedRouteExitEvidence=entity-owned-synthetic-route-exit blockOwnedRouteExitEvidence=block-owned-synthetic-route-exit locationOwnedRouteExitEvidence=location-owned-synthetic-route-exit noOwnerSerializedEvidence=no-owner-stayed-serialized multiRegionSerializedEvidence=multi-region-blocks-stayed-serialized
+```
+
+## 2026-06-02 - Block And Location Synthetic Event Route Exits
+
+Custom sync events with clear block or location owners can now leave the
+synthetic compatibility lane through region ownership before their listener
+chain runs. The block smoke uses a `getBlocks()` collection shape because live
+custom block events commonly expose a block list rather than a single
+`getBlock()` method. The extractor only promotes a block collection when all
+blocks share the same chunk anchor; otherwise the event remains in the
+synthetic lane.
+
+Expected route-exit evidence:
+
+```text
+[FBB synthetic-event-route-exit] action=current-owner event=smoketest.SmokeTarget$SmokeBlockCollectionOwnedEvent route=C_REGION_BLOCK family=region next=listener-block-owner-exit ownerMethod=getBlocks path=direct-current-owner
+[FBB synthetic-event-route-exit] action=current-owner event=smoketest.SmokeTarget$SmokeLocationOwnedEvent route=B_REGION_LOCATION family=region next=listener-location-owner-exit ownerMethod=getLocation path=direct-current-owner
+```
+
+Smoke verification now appends:
+
+```text
+blockOwnedRouteExitEvidence=block-owned-synthetic-route-exit locationOwnedRouteExitEvidence=location-owned-synthetic-route-exit
+```
+
+## 2026-06-02 - Entity-Owned Synthetic Event Route Exit
+
+Custom sync events with a clear entity owner can now leave the synthetic
+compatibility lane through `A_ENTITY` before their listener chain runs. The
+smoke fixture uses a harmless custom event with `getEntity()` and forces the
+local owner check with `foliabytecodebridge.smokeCurrentEntityOwner=true`, so the
+test proves the direct current-owner route without needing a live Folia entity
+thread.
+
+Expected route-exit evidence:
+
+```text
+[FBB synthetic-event-route-exit] action=current-owner event=smoketest.SmokeTarget$SmokeEntityOwnedEvent route=A_ENTITY family=entity next=listener-entity-owner-exit ownerMethod=getEntity path=direct-current-owner
+[FBB synthetic-event-dispatch] action=synthetic-start event=smoketest.SmokeTarget$SmokeEntityOwnedEvent route=A_ENTITY path=direct-current-owner
+```
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 bytecodeJars=2 bytecodeClasses=28 bytecodeRequiredHits=58 bytecodeMissing=[bukkitrunnable-runTaskAsync, bukkitrunnable-runTaskTimerAsync, scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncDelayedLong, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=4} rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=103 routeRules=88 nmsCompatEvidence=1 memberMapEvidence=2 nmsSyntheticMemberEvidence=synthetic-currentTick-field+tickServer-hook legacyMainThreadEvidence=legacy-isMainThread-original-check+folia-fallback mcUtilExecutorEvidence=mcutil-main-executor-global-route nmsServerExecutorEvidence=nms-minecraftserver-execute-global-route compatibilityLaneEvidence=synthetic-event-lane-sequence listenerRouteExitEvidence=listener-failure-route-exit-classified entityOwnedRouteExitEvidence=entity-owned-synthetic-route-exit
+```
+
+## 2026-06-02 - Startup Listener Route-Exit Probe
+
+Added a target-only startup probe that dispatches the harmless
+`SharedEventPathProbeEvent` through `SyntheticEventDispatchBridge` with an
+entity-owner-exit flag. One probe listener deliberately throws a Folia-shaped
+entity guard without touching a real entity. The expected diagnostic proves the
+synthetic shared-event lane can classify the listener failure as the next
+`A_ENTITY` route exit:
+
+```text
+[FBB synthetic-event-dispatch] action=listener-failure
+route=A_ENTITY family=entity next=listener-entity-owner-exit-needed
+```
+
+This is still evidence, not a broad listener rewrite. Unknown listener code
+stays in the synthetic/compatibility model, and only known bytecode routes are
+eligible to exit to Folia owners.
+
+Smoke command was run with the refreshed Maven-built shaded jar and live Folia
+compile classpath:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 bytecodeJars=2 bytecodeClasses=28 bytecodeRequiredHits=58 bytecodeMissing=[bukkitrunnable-runTaskAsync, bukkitrunnable-runTaskTimerAsync, scheduler-runTaskAsync, scheduler-runTaskLaterAsync, scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleSyncDelayedLong, scheduler-scheduleSyncRepeating, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, scheduler-scheduleAsyncRepeating, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=4} rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=103 routeRules=88 nmsCompatEvidence=1 memberMapEvidence=2 nmsSyntheticMemberEvidence=synthetic-currentTick-field+tickServer-hook legacyMainThreadEvidence=legacy-isMainThread-original-check+folia-fallback mcUtilExecutorEvidence=mcutil-main-executor-global-route nmsServerExecutorEvidence=nms-minecraftserver-execute-global-route compatibilityLaneEvidence=synthetic-event-lane-sequence listenerRouteExitEvidence=listener-failure-route-exit-classified
+```
+
+The first smoke attempt used a stale `target/classpath.txt` with old Paper API
+classes and failed before the probe with `PluginDescriptionFile#isFoliaSupported`
+missing. The rerun used `target/smoke-javac.args`, which points at the live
+Folia server libraries.
+
+## 2026-06-02 - Synthetic Event Dispatch Rewrite
+
+The exact bytecode shape `PluginManager#callEvent(Event)` is now routed through
+`SyntheticEventDispatchBridge`. Built-in Bukkit/Paper events remain
+pass-through. Custom non-async plugin events enter the compatibility lane and
+dispatch the registered listener list as the first concrete shared-event model.
+
+Smoke now asserts:
+
+```text
+[FBB guard-path] owner=org.bukkit.plugin.PluginManager name=callEvent ... action=rewritten
+[FBB synthetic-event-dispatch] action=synthetic-start ... result=dispatching
+[FBB synthetic-event-dispatch] action=synthetic-finish ... result=completed
+```
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=103 routeRules=88 nmsCompatEvidence=1 memberMapEvidence=2 nmsSyntheticMemberEvidence=synthetic-currentTick-field+tickServer-hook legacyMainThreadEvidence=legacy-isMainThread-original-check+folia-fallback mcUtilExecutorEvidence=mcutil-main-executor-global-route nmsServerExecutorEvidence=nms-minecraftserver-execute-global-route compatibilityLaneEvidence=synthetic-event-lane-sequence
+```
+
+## 2026-06-02 - Compatibility Lane Implementation
+
+The synthetic compatibility model now has a concrete single-thread
+`CompatibilityLane`. This is a serialized compatibility lane for unknown/shared
+legacy behavior, not a Folia owner thread. Known Bukkit API edges inside the
+lane still need to exit through normal route families before they are treated as
+safe.
+
+New smoke assertions require:
+
+```text
+[FBB compatibility-lane] action=submit ... result=queued
+[FBB compatibility-lane] action=start ... result=running thread=FBB-compatibility-lane
+[FBB compatibility-context] action=enter kind=synthetic-event-path ...
+[FBB event-listener] ... phase=MONITOR ... laneActive=true
+[FBB compatibility-lane] action=finish ... result=completed
+```
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=102 routeRules=88 nmsCompatEvidence=1 memberMapEvidence=2 nmsSyntheticMemberEvidence=synthetic-currentTick-field+tickServer-hook legacyMainThreadEvidence=legacy-isMainThread-original-check+folia-fallback mcUtilExecutorEvidence=mcutil-main-executor-global-route nmsServerExecutorEvidence=nms-minecraftserver-execute-global-route compatibilityLaneEvidence=synthetic-event-lane-sequence
+```
+
+## 2026-06-01 - Synthetic Compatibility Context
+
+The bridge now has a first-pass compatibility context for unknown or shared
+legacy paths. This is not an event-dispatch rewrite. It adds a clean runtime
+hook and evidence lines for future synthetic event-path work:
+
+```text
+[FBB compatibility-context]
+[FBB event-listener]
+[FBB promotion-candidate]
+[FBB synthetic-event-probe]
+```
+
+`PluginManager#callEvent(Event)` is registered as a trace-only `S_GLOBAL`
+architecture entry so event dispatch appears in route evidence without claiming
+a safe rewrite. The probe startup bucket now calls a harmless cancellable event
+with ordered listeners and records cancellation/state sharing under
+`synthetic-event-path`.
+
+Smoke verification:
+
+```text
+SMOKE_OK bridgeCalls=22 unsafeCalls=176 rawInheritedOwnerHits=0 rawAnonymousOverrideHits=0 rawWrapperGuardHits=0 rawLegacyAsyncRepeatingHits=0 rawCommandDispatchHits=2 asmRouteHits=102 routeRules=88 nmsCompatEvidence=1 memberMapEvidence=2 nmsSyntheticMemberEvidence=synthetic-currentTick-field+tickServer-hook legacyMainThreadEvidence=legacy-isMainThread-original-check+folia-fallback mcUtilExecutorEvidence=mcutil-main-executor-global-route nmsServerExecutorEvidence=nms-minecraftserver-execute-global-route
+```
+
 ## 2026-06-01 - C_REGION_BLOCK BlockData Read
 
 Live claim-style visualization evidence moved from the already-routed
@@ -163,7 +359,7 @@ adapter-research step. FBB also installs a de-duplicated runtime log handler so
 linkage throwables logged after FBB enables get a direct `[FBB compat]`
 breadcrumb in the server console.
 
-Smoke coverage includes a synthetic WorldGuard/world-editing reference-style stack trace and
+Smoke coverage includes a synthetic protection plugin reference/world-editing reference-style stack trace and
 asserts the model produces:
 
 ```text
@@ -174,7 +370,7 @@ asserts the model produces:
 
 The evidence tool now accepts `--server-root <server>` and emits
 `[FBB member-map]` for live compatibility failures. For the current
-world-editing reference/WorldGuard failure, the map proves the running Folia jar contains
+world-editing reference/protection plugin reference failure, the map proves the running Folia jar contains
 `net.minecraft.server.MinecraftServer` but does not contain the expected
 `currentTick:I` field:
 
@@ -405,7 +601,7 @@ emits the intentional `[FBB task-failure]` line for route/caller diagnostics.
 SMOKE_OK bridgeCalls=22 unsafeCalls=139 bytecodeJars=3 bytecodeClasses=4075 bytecodeRequiredHits=53 bytecodeMissing=[scheduler-runTaskTimerAsync, scheduler-scheduleSyncDelayed, scheduler-scheduleAsyncDelayed, scheduler-scheduleAsyncDelayedLong, player-teleport-cause, world-strikeLightning, shaded-paperlib-teleportAsync-fixture] knownGapHits={world-spawnEntity=1} rawInheritedOwnerHits=1 rawAnonymousOverrideHits=1 rawWrapperGuardHits=0 rawLegacyMainThreadOwnerAsyncRepeatingHits=1 rawCommandDispatchHits=2
 ```
 
-This pass included `kit-plugin-reference.jar`, `UltimateHomes-3.1.jar`, and
+This pass included `kit-plugin-reference.jar`, `home plugin reference-3.1.jar`, and
 `world-editing-plugin-reference.jar`. It verifies the world-editing reference legacy async
 scheduler shape still rewrites, and the probe smoke emits route evidence for
 `World#getLoadedChunks`, `Chunk#getEntities`, and `World#spawnEntity(Location,EntityType)`.
@@ -424,7 +620,7 @@ Last local run: 2026-05-28
 Command shape:
 
 ```text
-java -Dfoliabytecodebridge.forceNonFolia=true -Dfoliabytecodebridge.metadataOverlay=all -Dfoliabytecodebridge.smokeNoPassthrough=true -Dfoliabytecodebridge.debug=true -Dfoliabytecodebridge.deepPluginJars=<kit plugin reference.jar;EssentialsX.jar> -javaagent:FoliaBytecodeBridge.jar -cp <smoke classes + bridge + Paper API deps> smoketest.SmokeMain
+java -Dfoliabytecodebridge.forceNonFolia=true -Dfoliabytecodebridge.metadataOverlay=all -Dfoliabytecodebridge.smokeNoPassthrough=true -Dfoliabytecodebridge.debug=true -Dfoliabytecodebridge.deepPluginJars=<kit plugin reference.jar;server-utility plugin reference.jar> -javaagent:FoliaBytecodeBridge.jar -cp <smoke classes + bridge + Paper API deps> smoketest.SmokeMain
 ```
 
 Result:
@@ -697,7 +893,7 @@ Boot smoke:
 
 ```text
 [PluginInitializerManager] Initialized 5 plugins
- - FBBProbe, FBBProbeControl, FoliaBytecodeBridge, kit plugin reference, UltimateHomes
+ - FBBProbe, FBBProbeControl, FoliaBytecodeBridge, kit plugin reference, home plugin reference
 [FBBProbeControl] [FBB probe] enabled root=/fbbprobecontrol bridgeRole=control-untransformed ...
 [FBBProbe] [FBB probe] enabled root=/fbbprobe bridgeRole=target-transformed ...
 Done (20.507s)! For help, type "help"
@@ -775,14 +971,14 @@ Result:
 
 ```text
 [PluginInitializerManager] Initialized 4 plugins
- - FBBProbe (0.1.0-SNAPSHOT), FoliaBytecodeBridge (0.1.0-SNAPSHOT), kit plugin reference (1.22.1), UltimateHomes (3.1)
+ - FBBProbe (0.1.0-SNAPSHOT), FoliaBytecodeBridge (0.1.0-SNAPSHOT), kit plugin reference (1.22.1), home plugin reference (3.1)
 [FoliaBytecodeBridge] Bytecode transformer is installed. mode=JAVA_AGENT
 [FBBProbe] [FBB probe] enabled root=/fbbprobe modes=safe, scan, ui, visibility, entity, world, chunk, server, scoreboard, paper, all, destructive
 Done (18.527s)! For help, type "help"
 exit=0
 ```
 
-The same boot also reconfirmed the UltimateHomes direct teleport rewrite:
+The same boot also reconfirmed the home plugin reference direct teleport rewrite:
 
 ```text
 [FBB teleport-path] class=com.kixmc.uh.command.HomeCommand ... owner=org.bukkit.entity.Player name=teleport descriptor=(Lorg/bukkit/Location;)Z route=A_ENTITY rule=bukkit-api-owner action=rewritten outcome=rewritten-direct-teleport-async-shim bridge=UnsafeCallBridge#playerTeleport
@@ -852,9 +1048,9 @@ Meaning:
 - The smoke test asserts every emitted `route=<...>` value belongs to `RouteFamily` and specifically checks `[FBB scheduler]`, `[FBB unsafe-call]`, `[FBB unsafe-failure]`, and `[FBB task-failure]`.
 - Optional transform-skip logs separate expected bootstrap skips from real transform failures with `[FBB transform-skip] reason=bukkit-api-not-visible-yet` when `foliabytecodebridge.traceTransformSkips=true`.
 - The smoke fixture now covers declared-owner surprises from Paper's API: player source calls can resolve through `Entity`, `HumanEntity`, or `LivingEntity`.
-- The deep smoke fixture covers scheduler overloads, `BukkitRunnable` overloads, null-receiver failure logging, proxy-backed plugin-style chains, and bytecode inventory scanning of the built kit plugin reference and EssentialsX jars.
+- The deep smoke fixture covers scheduler overloads, `BukkitRunnable` overloads, null-receiver failure logging, proxy-backed plugin-style chains, and bytecode inventory scanning of the built kit plugin reference and server-utility plugin reference jars.
 - The raw-transform smoke fixture verifies the inherited-owner kit plugin reference join path: `PlayersConfigManager#loadConfig` compiles to `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` and must rewrite to `ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously`.
-- The raw-transform smoke fixture also guards the Essentials helper path: `Essentials#runTaskAsynchronously(Runnable)` must not be misclassified as a `BukkitRunnable` receiver. Its internal `getScheduler().runTaskAsynchronously(this, run)` call is the bytecode path that belongs in `S_ASYNC`.
+- The raw-transform smoke fixture also guards the server-utility plugin reference helper path: `server-utility plugin reference#runTaskAsynchronously(Runnable)` must not be misclassified as a `BukkitRunnable` receiver. Its internal `getScheduler().runTaskAsynchronously(this, run)` call is the bytecode path that belongs in `S_ASYNC`.
 
 ## Live `run.bat` Smoke, 2026-05-28 17:06
 
@@ -886,11 +1082,11 @@ Important evidence:
 [FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager path=raw-scheduler result=patched replacements=1
 [FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
 [FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
-[FBB scheduler] api=BukkitScheduler#runTaskAsynchronously route=S_ASYNC policy=async plugin=Essentials caller=com.earth2me.essentials.Essentials#runTaskAsynchronously(Essentials.java:1237)
+[FBB scheduler] api=BukkitScheduler#runTaskAsynchronously route=S_ASYNC policy=async plugin=server-utility plugin reference caller=com.earth2me.essentials.server-utility plugin reference#runTaskAsynchronously(server-utility plugin reference.java:1237)
 Done (30.074s)! For help, type "help"
 ```
 
-This confirms the Essentials helper guard: the live call now routes through `BukkitScheduler#runTaskAsynchronously` instead of the incorrect `BukkitRunnable#runTaskAsynchronously` path.
+This confirms the server-utility plugin reference helper guard: the live call now routes through `BukkitScheduler#runTaskAsynchronously` instead of the incorrect `BukkitRunnable#runTaskAsynchronously` path.
 
 ## Live Bytecode-Path Smoke, 2026-05-28 17:12
 
@@ -911,7 +1107,7 @@ unsupportedErrors=0
 Important evidence:
 
 ```text
-[FBB bytecode-path] class=com.earth2me.essentials.Essentials in=runTaskAsynchronously(Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#runTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/lang/Object;
+[FBB bytecode-path] class=com.earth2me.essentials.server-utility plugin reference in=runTaskAsynchronously(Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#runTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/lang/Object;
 [FBB bytecode-path] class=pk.ajneb97.database.MySQLConnection in=getPlayer(Ljava/lang/String;Lpk/ajneb97/model/internal/GenericCallback;)V source=pk.ajneb97.database.MySQLConnection$1#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 [FBB bytecode-path] class=pk.ajneb97.tasks.InventoryUpdateTaskManager in=start()V source=pk.ajneb97.tasks.InventoryUpdateTaskManager$1#runTaskTimer(Lorg/bukkit/plugin/Plugin;JJ)Lorg/bukkit/scheduler/BukkitTask; route=S_GLOBAL bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskTimer(Ljava/lang/Object;Ljava/lang/Object;JJ)Ljava/lang/Object;
 ```
@@ -934,10 +1130,10 @@ at pk.ajneb97.configs.PlayersConfigManager.loadConfig(PlayersConfigManager.java:
 ```
 
 That means the anonymous task class loaded and was transformed, but the outer caller instruction was still invoking the inherited BukkitRunnable method. The next bridge rule adds narrow synthetic overrides to anonymous BukkitRunnable subclasses, so virtual dispatch can route `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` through `ObjectSchedulerBridge` even if the caller class was loaded before self-attach could rewrite it.
-- The bytecode inventory scanner found 79 required reusable call-shape hits across kit plugin reference and EssentialsX, including Essentials' shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` `/home` path.
+- The bytecode inventory scanner found 79 required reusable call-shape hits across kit plugin reference and server-utility plugin reference, including server-utility plugin reference' shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` `/home` path.
 - It records two `World#spawnEntity` hits as known gaps because the local Paper 26.1.2 API jar used to compile the bridge does not expose that method.
 
-## Essentials `/home` Teleport Follow-Up, 2026-05-28
+## server-utility plugin reference `/home` Teleport Follow-Up, 2026-05-28
 
 The `/home` path goes through `AsyncTeleport#nowAsync`, then one of these bytecode shapes:
 
@@ -948,7 +1144,7 @@ org/bukkit/entity/Entity#teleportAsync(Location,TeleportCause)
 ```
 
 Those now route to `UnsafeCallBridge` under `A_ENTITY`. Static helper matching is
-generic by descriptor, not by Essentials package name. The shim delegates to
+generic by descriptor, not by server-utility plugin reference package name. The shim delegates to
 `Entity#teleportAsync` and logs future completion failures instead of swallowing them.
 If `/home` still fails live, the important evidence should now be an `[FBB unsafe-call]`
 or `[FBB unsafe-failure]` line naming one of those exact APIs, plus an `[FBB teleport-path]`
@@ -963,7 +1159,7 @@ Last server run: 2026-05-28
 Setup:
 
 - `debug-server/eula.txt` was set to `eula=true` after explicit user approval.
-- Current test servers can use `metadataOverlay=all` to open Folia's plugin metadata gate without editing plugin jars. Older patched kit plugin reference and EssentialsX copies may still exist in `debug-server/original-plugins/` for comparison, but new smoke evidence should prefer the overlay logs.
+- Current test servers can use `metadataOverlay=all` to open Folia's plugin metadata gate without editing plugin jars. Older patched kit plugin reference and server-utility plugin reference copies may still exist in `debug-server/original-plugins/` for comparison, but new smoke evidence should prefer the overlay logs.
 - The bridge ran as both `-javaagent:plugins/FoliaBytecodeBridge.jar` and a Bukkit plugin.
 
 Result:
@@ -986,40 +1182,40 @@ Startup was changed to the intended option-1 path:
 java -Xmx16G -javaagent:plugins\FoliaBytecodeBridge.jar -jar folia.jar nogui
 ```
 
-`UltimateHomes-3.1.jar` was intentionally left without `folia-supported: true` in
+`home plugin reference-3.1.jar` was intentionally left without `folia-supported: true` in
 its `plugin.yml`. The bridge jar-scan logged:
 
 ```text
-[FBB metadata] plugin=UltimateHomes jar=plugins\UltimateHomes-3.1.jar route=S_GLOBAL action=jar-scan mode=all result=overlay-will-force-true note=experimental-load-gate-only-not-thread-safety
+[FBB metadata] plugin=home plugin reference jar=plugins\home plugin reference-3.1.jar route=S_GLOBAL action=jar-scan mode=all result=overlay-will-force-true note=experimental-load-gate-only-not-thread-safety
 [FBB metadata] class=org.bukkit.plugin.PluginDescriptionFile ... action=metadata-transform mode=all result=patched-return-true
 ```
 
 Result:
 
 ```text
-LIVE_SMOKE_RESULT sawDone=True sawReject=False sawUltimateHomes=True sawNoClassDef=False
+LIVE_SMOKE_RESULT sawDone=True sawReject=False sawhome plugin reference=True sawNoClassDef=False
 ```
 
-Folia initialized all three plugins and did not reject UltimateHomes for missing
+Folia initialized all three plugins and did not reject home plugin reference for missing
 Folia metadata:
 
 ```text
 [PluginInitializerManager] Initialized 3 plugins
-FoliaBytecodeBridge, kit plugin reference, UltimateHomes
+FoliaBytecodeBridge, kit plugin reference, home plugin reference
 ```
 
 The same run showed useful scheduler evidence for the newly loaded home plugin:
 
 ```text
-[FBB scheduler] api=BukkitScheduler#runTaskLater route=S_GLOBAL policy=global-delayed plugin=UltimateHomes caller=com.kixmc.uh.core.Main#onEnable(Main.java:99)
+[FBB scheduler] api=BukkitScheduler#runTaskLater route=S_GLOBAL policy=global-delayed plugin=home plugin reference caller=com.kixmc.uh.core.Main#onEnable(Main.java:99)
 ```
 
 Observed routes:
 
 - `BukkitRunnable#runTaskTimer` from `kit plugin reference` inventory update startup.
 - `BukkitRunnable#runTaskTimerAsynchronously` from `kit plugin reference` player data save startup.
-- `BukkitScheduler#scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask` through Essentials' helper wrappers.
-- `BukkitScheduler#runTaskAsynchronously` through Essentials' helper wrapper.
+- `BukkitScheduler#scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask` through server-utility plugin reference' helper wrappers.
+- `BukkitScheduler#runTaskAsynchronously` through server-utility plugin reference' helper wrapper.
 
 The raw scheduler transformer caught real plugin bytecode where Byte Buddy's typed substitution cannot safely resolve Paperclip plugin classloaders.
 
@@ -1049,8 +1245,8 @@ SUMMARY freshLog=True done=1 schedulerLogs=7 unsafeCalls=0 unsafeFailures=0 task
 
 Observed route-family evidence:
 
-- `S_GLOBAL`: kit plugin reference `BukkitRunnable#runTaskTimer`; Essentials `scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask`.
-- `S_ASYNC`: kit plugin reference `BukkitRunnable#runTaskTimerAsynchronously`; Essentials `runTaskAsynchronously`.
+- `S_GLOBAL`: kit plugin reference `BukkitRunnable#runTaskTimer`; server-utility plugin reference `scheduleSyncDelayedTask` and `scheduleSyncRepeatingTask`.
+- `S_ASYNC`: kit plugin reference `BukkitRunnable#runTaskTimerAsynchronously`; server-utility plugin reference `runTaskAsynchronously`.
 - `A_ENTITY`, `B_REGION_LOCATION`, `C_REGION_BLOCK`, `D_PLAYER_UI`, `F_PLAYER_VISIBILITY`, `G_WORLD_SCAN_SPLIT`: no startup-time unsafe direct calls were executed during this smoke. This is useful negative evidence, not a reason to add broader logging.
 
 The Java-agent live run confirms the most deterministic startup path. A later
@@ -1079,7 +1275,7 @@ The late self-attach path patched already-loaded plugin classes before enable,
 including:
 
 ```text
-[FBB transform] class=com.earth2me.essentials.Essentials loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
+[FBB transform] class=com.earth2me.essentials.server-utility plugin reference loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
 [FBB transform] class=pk.ajneb97.tasks.PlayerDataSaveTask loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
 [FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
 ```
@@ -1090,7 +1286,7 @@ Folia `UnsupportedOperationException` enable failures:
 ```text
 [FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
 [FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
-[FBB scheduler] api=BukkitScheduler#scheduleSyncDelayedTask route=S_GLOBAL policy=global plugin=Essentials caller=com.earth2me.essentials.Essentials#scheduleSyncDelayedTask(Essentials.java:1252)
+[FBB scheduler] api=BukkitScheduler#scheduleSyncDelayedTask route=S_GLOBAL policy=global plugin=server-utility plugin reference caller=com.earth2me.essentials.server-utility plugin reference#scheduleSyncDelayedTask(server-utility plugin reference.java:1252)
 ```
 
 An earlier self-attach pass logged one typed-transform diagnostic on a server
@@ -1117,7 +1313,7 @@ unsupported=0
 
 Last local smoke run: 2026-05-28
 
-UltimateHomes-style home commands exposed this generic bytecode shape:
+home-command-style home commands exposed this generic bytecode shape:
 
 ```text
 build Location from stored x/y/z/yaw/pitch
@@ -1126,7 +1322,7 @@ org/bukkit/entity/Player#teleport(Lorg/bukkit/Location;)Z
 ```
 
 The bridge now treats that as a direct Bukkit-owner `A_ENTITY` path, not as
-UltimateHomes support. The smoke fixture emitted:
+home plugin reference support. The smoke fixture emitted:
 
 ```text
 [FBB teleport-path] class=smoketest.SmokeTarget ... owner=org.bukkit.entity.Player name=teleport descriptor=(Lorg/bukkit/Location;)Z route=A_ENTITY rule=bukkit-api-owner action=rewritten outcome=rewritten-direct-teleport-async-shim bridge=UnsafeCallBridge#playerTeleport

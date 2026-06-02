@@ -55,6 +55,7 @@ final class RouteRuleRegistry {
     private static final String ENTITY_ARRAY = "[Lorg/bukkit/entity/Entity;";
     private static final String ENTITY_LIST = "Ljava/util/List;";
     private static final String ENTITY_TYPE = "Lorg/bukkit/entity/EntityType;";
+    private static final String EVENT = "Lorg/bukkit/event/Event;";
     private static final String HUMAN_ENTITY = "Lorg/bukkit/entity/HumanEntity;";
     private static final String INVENTORY = "Lorg/bukkit/inventory/Inventory;";
     private static final String INVENTORY_VIEW = "Lorg/bukkit/inventory/InventoryView;";
@@ -109,6 +110,11 @@ final class RouteRuleRegistry {
                 "minecraftServerExecute", "(Ljava/lang/Object;Ljava/lang/Runnable;)V",
                 ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
                 "NMS MinecraftServer executor schedules through Folia global scheduler");
+        add("org/bukkit/plugin/PluginManager", "callEvent", "(" + EVENT + ")V",
+                RouteFamily.S_GLOBAL, "PluginManager#shared-event-dispatch",
+                "pluginManagerCallEvent", "(Lorg/bukkit/plugin/PluginManager;" + EVENT + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "custom sync event dispatch enters the synthetic compatibility lane; built-in events pass through");
 
         add("org/bukkit/entity/Entity", "teleport", "(" + LOCATION + ")Z",
                 RouteFamily.A_ENTITY, "CraftEntity#teleport",
