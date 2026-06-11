@@ -76,12 +76,13 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <relocations>
-                                <relocation>
-                                    <pattern>net.bytebuddy</pattern>
-                                    <shadedPattern>dev.foliabytecodebridge.shaded.bytebuddy</shadedPattern>
-                                </relocation>
-                            </relocations>
+                            <!--
+                                Keep Byte Buddy under its normal package name.
+                                The Java agent is loaded before Bukkit's plugin
+                                classpath exists, so every agent dependency must
+                                be visible inside this jar under the same names
+                                referenced by the compiled agent classes.
+                            -->
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <manifestEntries>

@@ -18,6 +18,8 @@ See the `docs/` folder for architecture notes, route families, diagnostics, prob
 
 The synthetic compatibility/event-path model is documented at [`docs/SYNTHETIC_COMPATIBILITY_MODEL.md`](docs/SYNTHETIC_COMPATIBILITY_MODEL.md).
 
+Transformer targeting and lifecycle/shutdown evidence buckets are documented at [`docs/STABILIZATION_AUDIT.md`](docs/STABILIZATION_AUDIT.md).
+
 The previous detailed README was preserved at [`docs/TECHNICAL_README.md`](docs/TECHNICAL_README.md).
 
 

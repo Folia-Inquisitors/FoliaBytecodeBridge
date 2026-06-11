@@ -12,6 +12,27 @@ Use this on a test server first. Keep a copy of the server logs from startup thr
 java -javaagent:plugins/FoliaBytecodeBridge.jar -jar folia.jar
 ```
 
+For a release-style local build, use Maven:
+
+```powershell
+mvn clean package
+```
+
+or the helper script:
+
+```powershell
+.\tools\build-fbb.ps1 -LivePluginsPath "C:\path\to\server\plugins"
+```
+
+The helper runs the Maven build, verifies the jar contains the current
+`BridgeBuildInfo` marker, and can copy the result to a test server. If Maven is
+not on `PATH`, fix that first rather than hand-assembling a release jar.
+
+The Java agent starts before Bukkit's plugin classpath exists, so agent
+dependencies must be bundled inside the same jar under the package names used by
+the compiled agent classes. In particular, Byte Buddy must be visible as
+`net/bytebuddy/...`; otherwise startup fails before Folia can boot.
+
 The same jar must be both the Java agent and the Bukkit plugin.
 
 Experimental mode: if the server is started without `-javaagent`, the plugin tries
@@ -29,6 +50,8 @@ For debugging, keep the default file-first diagnostics:
 -Dfoliabytecodebridge.debugFile=true
 -Dfoliabytecodebridge.debugFileVerbose=true
 -Dfoliabytecodebridge.consoleVerbose=false
+-Dfoliabytecodebridge.architecturePathfindingDebug=true
+-Dfoliabytecodebridge.syntheticListenerBoundary=true
 ```
 
 By default, detailed `[FBB ...]` evidence is written to
@@ -37,6 +60,30 @@ failure, model-summary, and repeat-summary lines readable. Use
 `-Dfoliabytecodebridge.consoleVerbose=true` when you intentionally want the old
 noisy console behavior. The debug file is the main laboratory notebook; keep it
 when investigating route behavior.
+
+The debug writers are asynchronous. If a hot route produces more evidence than
+the writer queue can flush, FBB records a backpressure marker and drops some
+diagnostic lines instead of blocking a Folia owner thread. Treat
+`FBB_DEBUG_FILE_BACKPRESSURE_V1` or `FBB_ARCH_DIAGNOSTIC_BACKPRESSURE_V1` as a
+signal to narrow the probe or tune repeat summaries, not as a route success or
+failure verdict.
+
+FBB also writes `plugins/FoliaBytecodeBridge/architecture-pathfinding.debug` by
+default. That file is the readable architecture path timeline: boot, bytecode
+prescan/rewrite, route model, runtime scheduler/unsafe calls, synthetic event
+state, multi-region decisions, and NMS compatibility are tagged as
+`stage=<area/subarea>` so the bridge's decision path can be followed without
+opening the full noisy `debug.log`. Compact `[FBB architecture-decision]` lines
+inside that file summarize owner extraction, return-value risk, synthetic lane
+exit/stay-serialized choices, policy refusals, promotion candidates, and helper
+visibility.
+
+With `syntheticListenerBoundary=true`, built-in server-fired listener callbacks
+also pass through a narrow `RegisteredListener#callEvent(Event)` wrapper. Look
+for `[FBB synthetic-listener-boundary] marker=FBB_SYNTHETIC_LISTENER_BOUNDARY_V1`
+to confirm that this deeper event entry point is active. This does not prove
+listener internals are safe; it makes the path visible to the same synthetic
+compatibility model used by custom plugin-dispatched events.
 
 To let every legacy plugin pass Folia's `folia-supported` metadata gate on an experimental test server, add this to `plugins/FoliaBytecodeBridge/config.properties` or as a JVM property:
 
@@ -77,7 +124,7 @@ If self-attach succeeds after some plugin classes were already loaded, look for
 raw scheduler patch lines before the target plugins enable:
 
 ```text
-[FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
+[FBB transform] class=example.plugin.tasks.InventoryUpdateTaskManager loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
 ```
 
 Those lines prove the late attach path reprocessed already-loaded plugin jar
@@ -120,6 +167,13 @@ By default the planner skips `FoliaBytecodeBridge.jar`, `FBBProbe.jar`, and
 `FBBProbeControl.jar` so the expected-vs-observed report focuses on target
 plugins. Add `-IncludeToolingJars` when debugging the bridge/probe jars
 themselves.
+
+For live route smoke tests, let `FBBProbe` run the transformed startup probes
+and keep `FBBProbeControl` manual unless you explicitly need the raw baseline.
+The control jar intentionally triggers Folia guard failures, so its default
+startup mode is `off`; enable it with
+`-Dfbbprobecontrol.startupModes=startup` or run `/fbbprobecontrol startup`
+when comparing transformed vs untransformed behavior.
 
 The planner does two separate things:
 
@@ -171,6 +225,12 @@ such as `NoSuchFieldError`, `NoSuchMethodError`, `NoClassDefFoundError`, or
 owner/name/descriptor against the running server jar before adding any adapter;
 do not fold those failures into `A_ENTITY`, `B_REGION_LOCATION`, or the other
 ownership routes unless the failing call is also a normal Bukkit API guard.
+
+`NMS_EXECUTOR_CONTEXT` evidence is also separate from route-family evidence.
+It appears when a server-internal executor shim, previously observed as
+`S_GLOBAL`, fails because the runnable expected Folia regionized world data.
+Treat it as an owner-discovery problem: find the world/chunk/location context
+before promoting the executor path into a stronger adapter.
 
 Pass `--server-root <server>` to add `[FBB member-map]` rows. The tool scans
 the extracted runtime server jars first, then cache/libraries/launcher jars, and

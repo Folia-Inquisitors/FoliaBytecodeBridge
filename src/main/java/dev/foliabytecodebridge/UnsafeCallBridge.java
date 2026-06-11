@@ -75,8 +75,15 @@ public final class UnsafeCallBridge {
     private UnsafeCallBridge() {
     }
 
-    static void setBridgePlugin(Plugin plugin) {
+    /**
+     * Public bootstrap boundary used by the Bukkit plugin entrypoint.
+     *
+     * <p>Runtime helpers may be parent-loaded from the Java-agent helper jar, so
+     * this cannot rely on package-private access from the plugin classloader.</p>
+     */
+    public static void setBridgePlugin(Plugin plugin) {
         bridgePlugin = plugin;
+        BridgePluginResolver.setBridgePlugin(plugin, "UnsafeCallBridge#setBridgePlugin");
     }
 
     public static boolean bukkitDispatchCommand(CommandSender sender, String command) {
@@ -92,12 +99,12 @@ public final class UnsafeCallBridge {
     }
 
     public static Location entityGetLocation(Entity entity) {
-        return guarded("Entity#getLocation", "entity", "entity-scheduler-read", entityDetail(entity),
+        return guarded("Entity#getLocation", "entity", "entity-scheduler-read", entityReadDetail(entity),
                 () -> entity.getLocation());
     }
 
     public static World entityGetWorld(Entity entity) {
-        return guarded("Entity#getWorld", "entity", "entity-scheduler-read", entityDetail(entity),
+        return guarded("Entity#getWorld", "entity", "entity-scheduler-read", entityReadDetail(entity),
                 () -> entity.getWorld());
     }
 
@@ -211,12 +218,12 @@ public final class UnsafeCallBridge {
     }
 
     public static Location playerGetLocation(Player player) {
-        return guarded("Player#getLocation", "player", "entity-scheduler-read", playerDetail(player),
+        return guarded("Player#getLocation", "player", "entity-scheduler-read", playerReadDetail(player),
                 () -> player.getLocation());
     }
 
     public static World playerGetWorld(Player player) {
-        return guarded("Player#getWorld", "player", "entity-scheduler-read", playerDetail(player),
+        return guarded("Player#getWorld", "player", "entity-scheduler-read", playerReadDetail(player),
                 () -> player.getWorld());
     }
 
@@ -1816,6 +1823,10 @@ public final class UnsafeCallBridge {
         try {
             return future.get(5L, TimeUnit.SECONDS);
         } catch (Exception exception) {
+            if (isBridgeOrServerStopping()) {
+                BridgeDiagnostics.scheduledFallbackAbandoned(sourceApi, route, family, nextAction, detail, exception);
+                throw exception;
+            }
             BridgeDiagnostics.unsafeFailure(sourceApi, route, family, nextAction,
                     new IllegalStateException("scheduled fallback did not complete: " + detail, exception));
             throw exception;
@@ -2560,15 +2571,30 @@ public final class UnsafeCallBridge {
     private static Plugin bridgePlugin() {
         Plugin plugin = bridgePlugin;
         if (plugin != null) return plugin;
+        plugin = BridgePluginResolver.requirePlugin("unsafe-call scheduling");
+        bridgePlugin = plugin;
+        return plugin;
+    }
+
+    private static boolean isBridgeOrServerStopping() {
+        Plugin plugin = bridgePlugin;
+        if (plugin != null && !plugin.isEnabled()) {
+            return true;
+        }
         try {
-            plugin = Bukkit.getPluginManager().getPlugin("FoliaBytecodeBridge");
-            if (plugin != null) {
-                bridgePlugin = plugin;
-                return plugin;
+            Server server = Bukkit.getServer();
+            Method method = server.getClass().getMethod("isStopping");
+            Object result = method.invoke(server);
+            if (Boolean.TRUE.equals(result)) {
+                return true;
             }
         } catch (Throwable ignored) {
+            // Older/alternate Bukkit shapes do not expose isStopping. In that case
+            // keep the original timeout/failure path so evidence is not softened.
         }
-        throw new IllegalStateException("FoliaBytecodeBridge plugin is not available for command dispatch scheduling");
+        String threadName = currentThreadName();
+        return threadName.contains("RegionShutdownThread")
+                || threadName.contains("Region shutdown thread");
     }
 
     private static Object scheduler(String getterName) {
@@ -3821,6 +3847,11 @@ public final class UnsafeCallBridge {
         }
     }
 
+    private static String playerReadDetail(Player player) {
+        return playerDetail(player) + " policy=entity-owner-read-return"
+                + " contract=entity-owner-read-return";
+    }
+
     private static String humanDetail(HumanEntity human) {
         if (human == null) return "human=null";
         try {
@@ -3855,6 +3886,11 @@ public final class UnsafeCallBridge {
         } catch (Throwable ignored) {
             return "entity=" + entity.getClass().getName();
         }
+    }
+
+    private static String entityReadDetail(Entity entity) {
+        return entityDetail(entity) + " policy=entity-owner-read-return"
+                + " contract=entity-owner-read-return";
     }
 
     private static String senderDetail(CommandSender sender) {

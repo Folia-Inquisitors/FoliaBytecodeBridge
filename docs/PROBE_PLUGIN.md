@@ -52,6 +52,12 @@ For `UnsupportedOperationException`, the probe also appends
 `action=trace-only reason=unsupported-operation-route-not-proven` so the line is
 clearly evidence for a future bytecode rule, not a completed route.
 
+When the server is already stopping, remaining probe work is reported as
+`result=abandoned classification=server-stopping`. In that state the probe skips
+rich stack fingerprinting because plugin classloaders and jar files may already
+be closing. Treat those lines as lifecycle cleanup evidence, not as a new
+route-family failure.
+
 ## Command
 
 `FBBProbe` and `FBBProbeControl` each register one Bukkit command:
@@ -171,6 +177,15 @@ Startup probing can be changed with JVM properties:
 -Dfbbprobe.startupDelayTicks=60
 ```
 
+The transformed target probe defaults to startup auto-probes. The raw control
+probe defaults to `startupModes=off` because its purpose is to trigger baseline
+Folia guard failures. Run it explicitly when comparing behavior:
+
+```text
+-Dfbbprobecontrol.startupModes=startup
+-Dfbbprobecontrol.startupContexts=global,async,region
+```
+
 Console can manually rerun the boot-safe set:
 
 ```text
@@ -247,7 +262,7 @@ The target startup probe also sends two negative wrapper cases through
 - the same contract-ready event also reaches
   `[FBB synthetic-multi-region] phase=execute-mutation`. With the default
   `syntheticMutationExecutor=false`, the expected result is
-  `result=blocked reason=executor-disabled action=stay-serialized`. When
+  `result=contract-disabled reason=executor-disabled action=stay-serialized`. When
   `syntheticMutationExecutor=true` is set on a throwaway server, the expected
   live path is `result=scheduled`, followed by `result=completed
   reason=verified` or a preserved failure. This is an exact hook-contract test,

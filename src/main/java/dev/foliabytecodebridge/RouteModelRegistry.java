@@ -41,6 +41,7 @@ final class RouteModelRegistry {
         boolean changed = model.update(status, next,
                 evidence("bytecode", rule, outcome, bridge, className, jar),
                 routeRule);
+        changed |= model.applyGenericRulePolicy(rule, outcome);
         return changed ? report(model) : null;
     }
 
@@ -242,6 +243,41 @@ final class RouteModelRegistry {
                 }
             }
             return changed;
+        }
+
+        synchronized boolean applyGenericRulePolicy(String rule, String outcome) {
+            String normalizedRule = safe(rule).toLowerCase(java.util.Locale.ROOT);
+            if (!normalizedRule.startsWith("generic-")) {
+                return false;
+            }
+            String newPolicy;
+            String newStatus;
+            String newNote;
+            if ("generic-shape".equals(normalizedRule)) {
+                newPolicy = "GENERIC_SHAPE";
+                newStatus = "EXPERIMENTAL_REWRITE";
+                newNote = "ownerless generic method shape is intentionally modeled outside exact RouteRuleRegistry owners";
+            } else if ("generic-helper-shape".equals(normalizedRule)) {
+                newPolicy = "GENERIC_HELPER_SHAPE";
+                newStatus = "TRACE_ONLY";
+                newNote = "helper-style entity/location ownerless shape is observed without overriding helper behavior";
+            } else if ("generic-shape-probe".equals(normalizedRule)) {
+                newPolicy = "GENERIC_SHAPE_PROBE";
+                newStatus = safe(outcome).toLowerCase(java.util.Locale.ROOT).contains("missed") ? "MISSED" : "TRACE_ONLY";
+                newNote = "near-match generic shape is diagnostic until a safe bridge contract is proven";
+            } else {
+                newPolicy = "GENERIC_DYNAMIC_SHAPE";
+                newStatus = "OBSERVED";
+                newNote = "generic ownerless bytecode shape is tracked dynamically by rule name";
+            }
+            if (newPolicy.equals(routeRulePolicy) && newStatus.equals(routeRuleStatus)
+                    && newNote.equals(routeRuleNote)) {
+                return false;
+            }
+            routeRulePolicy = newPolicy;
+            routeRuleStatus = newStatus;
+            routeRuleNote = newNote;
+            return true;
         }
 
         String line() {

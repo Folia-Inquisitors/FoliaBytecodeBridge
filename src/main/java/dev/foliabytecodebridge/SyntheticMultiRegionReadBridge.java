@@ -37,7 +37,7 @@ final class SyntheticMultiRegionReadBridge {
             List<Block> anchors = observation.ownerAnchors();
             if (anchors == null || anchors.isEmpty()) {
                 BridgeDiagnostics.syntheticMultiRegionReadSplit(eventName, listenerCount, observation,
-                        "result=blocked reason=no-owner-anchors");
+                        "result=contract-missing reason=no-owner-anchors");
                 continue;
             }
             try {
@@ -66,7 +66,7 @@ final class SyntheticMultiRegionReadBridge {
         }
         if (futures.isEmpty()) {
             BridgeDiagnostics.syntheticMultiRegionReadSplit(eventName, listenerCount, observation,
-                    "result=blocked reason=no-readable-owner-anchors");
+                    "result=contract-missing reason=no-readable-owner-anchors");
             return;
         }
         BridgeDiagnostics.syntheticMultiRegionReadSplit(eventName, listenerCount, observation,
@@ -118,11 +118,6 @@ final class SyntheticMultiRegionReadBridge {
     }
 
     private static Plugin bridgePlugin() {
-        try {
-            Plugin plugin = Bukkit.getPluginManager().getPlugin("FoliaBytecodeBridge");
-            if (plugin != null) return plugin;
-        } catch (Throwable ignored) {
-        }
-        throw new IllegalStateException("FoliaBytecodeBridge plugin is not enabled for synthetic read split");
+        return BridgePluginResolver.requirePlugin("synthetic read split");
     }
 }

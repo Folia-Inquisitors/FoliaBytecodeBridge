@@ -62,7 +62,7 @@ final class SyntheticMultiRegionMutationPlanner {
             if (observation.readOnly()) continue;
             if (!intent.explicit()) {
                 BridgeDiagnostics.syntheticMultiRegionMutationPlan(eventName, listenerCount, observation,
-                        "result=blocked reason=no-explicit-mutation-intent action=stay-serialized"
+                        "result=serialized-unproven reason=no-explicit-mutation-intent action=stay-serialized"
                                 + " intentGetter=none");
                 continue;
             }
@@ -82,7 +82,7 @@ final class SyntheticMultiRegionMutationPlanner {
         MutationContract contract = mutationContract(event);
         if (!contract.ready()) {
             BridgeDiagnostics.syntheticMultiRegionMutationContract(eventName, listenerCount, observation,
-                    "result=blocked reason=missing-two-phase-contract"
+                    "result=contract-missing reason=missing-two-phase-contract"
                             + " prepare=" + contract.prepare()
                             + " ownerApply=" + contract.ownerApply()
                             + " aggregateVerify=" + contract.aggregateVerify()

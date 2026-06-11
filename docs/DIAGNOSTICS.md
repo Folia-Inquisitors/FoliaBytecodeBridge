@@ -73,6 +73,57 @@ live log still shows `NoSuchFieldError: MinecraftServer.currentTick:I`, the
 agent probably attached after `MinecraftServer` was already defined or the
 runtime method descriptor changed.
 
+## NMS Executor Context
+
+`NMS_EXECUTOR_CONTEXT` is for server-internal executor paths such as
+`MCUtil.MAIN_EXECUTOR#execute` or `MinecraftServer#execute`. These are not
+ordinary Bukkit calls. A runnable submitted through those paths may later touch
+chunk/world internals that expect Folia's current regionized world data.
+
+Transform-time evidence:
+
+```text
+[FBB nms-compat] category=NMS_EXECUTOR_CONTEXT model=MCUTIL_MAIN_EXECUTOR_CONTEXT owner=io.papermc.paper.util.MCUtil name=MAIN_EXECUTOR.execute route=none previousRoute=S_GLOBAL action=rewritten result=rewritten-through-current-executor-shim next=watch-runtime-for-owner-context-missing-before-promoting-route
+```
+
+Runtime failure evidence:
+
+```text
+[FBB nms-compat] category=NMS_EXECUTOR_CONTEXT model=SERVER_EXECUTOR_CONTEXT api=MCUtil.MAIN_EXECUTOR#execute owner=net.minecraft.server.level.ServerChunkCache$MainThreadExecutor#pollTask route=none previousRoute=S_GLOBAL result=owner-context-missing action=diagnostic-only next=derive-world-or-chunk-owner-before-promoting-executor-route
+```
+
+This line means the current global executor shim got the plugin past the old
+direct executor call, but the runnable itself expected a region/chunk/world
+context. The next adapter should derive a concrete owner before changing
+behavior. Do not fold this evidence into `S_GLOBAL` just to make the log quieter.
+
+The first NMS compatibility lane adds these breadcrumbs:
+
+```text
+[FBB nms-owner-extract] action=scan-runnable api=MCUtil.MAIN_EXECUTOR#execute family=NMS_EXECUTOR_CONTEXT ownerFound=<true|false> ...
+[FBB nms-route-exit] api=MCUtil.MAIN_EXECUTOR#execute family=NMS_EXECUTOR_CONTEXT ownerKind=<location|chunk|entity> route=<region-location|region-chunk|entity-location-region> result=owner-context-found ...
+[FBB nms-owner-miss] api=MCUtil.MAIN_EXECUTOR#execute family=NMS_EXECUTOR_CONTEXT ownerStatus=no-owner-contract result=stay-serialized ...
+[FBB nms-lane] action=<submit|start|finish|failure> ... note=owner-preserving-serialized-nms-compatibility-boundary
+[FBB nms-context] action=<enter|exit> ... note=server-internal-compatibility-context-not-bukkit-route-family
+```
+
+Important wording: the NMS lane is owner-preserving. If FBB finds a concrete
+owner clue, it schedules the runnable on that Folia owner and then serializes
+inside that owner thread. If no owner clue exists, the runnable stays on the
+current executor shim and remains explicit `no-owner-contract` evidence.
+
+`[FBB nms-owner-extract]` includes `clueTrail=...` in the debug and
+architecture-pathfinding files. That trail records the world, chunk, position,
+and captured-int candidates the extractor inspected. A common promoted shape is
+a runnable that captures a `World`/`ServerLevel` plus exactly two local integer
+fields; FBB treats those two integers as a chunk pair only when they live on the
+same runnable object. If the result stays `world-found-without-position`, the
+clue trail is the next place to look before adding another NMS owner extractor.
+
+Repeated scheduled task failures are still written in full to `debug.log`.
+Console output uses repeat summaries after the configured first few lines so a
+hot failing task does not bury the route evidence in `latest.log`.
+
 ## Recommended Debug Startup
 
 ```text
@@ -90,6 +141,9 @@ debugFile=true
 debugFileVerbose=true
 debugFilePath=plugins/FoliaBytecodeBridge/debug.log
 debugFileMaxBytes=5368709120
+architecturePathfindingDebug=true
+architecturePathfindingDebugPath=plugins/FoliaBytecodeBridge/architecture-pathfinding.debug
+architecturePathfindingDebugMaxBytes=5368709120
 consoleVerbose=false
 modelReports=true
 metadataOverlay=all
@@ -112,6 +166,9 @@ repeatDiagnosticEvery=100
 | `foliabytecodebridge.debugFileVerbose` | `true` | Enables the noisy transform, bytecode-path, guard-path, scheduler, unsafe-call, and skip traces for the debug file by default. Set false only for a tiny debug file. |
 | `foliabytecodebridge.debugFilePath` | `plugins/FoliaBytecodeBridge/debug.log` | Overrides the debug-file location. Keep this local; it may contain plugin stack details even when paths are redacted. |
 | `foliabytecodebridge.debugFileMaxBytes` | `5368709120` | Refreshes `debug.log` at this size by rotating the old file to `debug-<timestamp>.log` and starting a fresh `debug.log`. Set `0` to disable rotation. `5368709120` is 5 GiB. |
+| `foliabytecodebridge.architecturePathfindingDebug` | `true` | Writes a focused route-thinking timeline to `architecture-pathfinding.debug`. This is the readable architecture path map; `debug.log` remains the full lab notebook. |
+| `foliabytecodebridge.architecturePathfindingDebugPath` | `plugins/FoliaBytecodeBridge/architecture-pathfinding.debug` | Overrides the architecture pathfinding file location. Lines are copied from relevant `[FBB ...]` evidence and tagged with `stage=<area/subarea>`. |
+| `foliabytecodebridge.architecturePathfindingDebugMaxBytes` | `5368709120` | Refreshes `architecture-pathfinding.debug` at this size by rotating the old file to `architecture-pathfinding-<timestamp>.debug` and starting a fresh file. Set `0` to disable rotation. |
 | `foliabytecodebridge.consoleVerbose` | `false` | Prints full diagnostic detail to console. Leave false for readable live runs; the debug file still receives the full stream. |
 | `foliabytecodebridge.modelSummaryIntervalSeconds` | `30` | Emits a fresh `[FBB model-summary]` at least this often while new evidence is still arriving. Set `0` to keep only first/size-threshold summaries. |
 | `foliabytecodebridge.repeatDiagnosticFirstLines` | `3` | Full `[FBB scheduler]` and `[FBB unsafe-call]` lines to print for each repeated hot path before summaries begin. Failures are not throttled. |
@@ -121,7 +178,8 @@ repeatDiagnosticEvery=100
 | `foliabytecodebridge.classpathRoots` | `libraries;versions;cache` | Semicolon-separated roots scanned for Folia/Paper API jars and server libraries. |
 | `foliabytecodebridge.selfAttach` | `true` | Experimental: when `-javaagent` was not used, try to attach from plugin `onLoad` using a helper JVM and the same jar. |
 | `foliabytecodebridge.metadataOverlay` | `off` | Experimental load-gate overlay. `all` rewrites Folia's plugin metadata check so every plugin reports `folia-supported` at load time. Requires `-javaagent` to help plugins that would otherwise be rejected before class loading. |
-| `foliabytecodebridge.syntheticMutationExecutor` | `false` | Phase 5B guarded synthetic multi-region mutation executor. Runs only for explicit contract-ready events with exact prepare/apply/verify hooks. Leave false unless testing on a throwaway server; disabled paths log `phase=execute-mutation result=blocked reason=executor-disabled`. |
+| `foliabytecodebridge.syntheticMutationExecutor` | `false` | Phase 5B guarded synthetic multi-region mutation executor. Runs only for explicit contract-ready events with exact prepare/apply/verify hooks. Leave false unless testing on a throwaway server; disabled paths log `phase=execute-mutation result=contract-disabled reason=executor-disabled`. |
+| `foliabytecodebridge.syntheticListenerBoundary` | `true` | Experimental listener-boundary wrapper. Rewrites `RegisteredListener#callEvent(Event)` so built-in server-fired listener callbacks enter the synthetic compatibility model instead of only plugin-dispatched custom events. |
 | `foliabytecodebridge.forceNonFolia` | `false` | Test-only flag that forces non-Folia pass-through mode. Used by the smoke test. |
 
 The same diagnostic keys can be written without the `foliabytecodebridge.` prefix in `plugins/FoliaBytecodeBridge/config.properties`; for example `traceSchedulerCalls=true`.
@@ -136,6 +194,97 @@ Debug files are session-stamped. Each new file starts with a header containing
 the session time, FBB version, build id, and route-rule count. Individual debug
 entries are also timestamped so old evidence can be separated from current live
 failures without cross-checking `latest.log`.
+
+Debug file writes are asynchronous and bounded. This is intentional: diagnostic
+I/O must not stall a Folia region, entity, or global owner thread. Under extreme
+route spam, FBB may drop debug records and write a backpressure marker such as
+`FBB_DEBUG_FILE_BACKPRESSURE_V1` or `FBB_ARCH_DIAGNOSTIC_BACKPRESSURE_V1`.
+That is evidence loss, not route silencing; preserving server execution takes
+priority over writing every laboratory note synchronously.
+
+`architecture-pathfinding.debug` is session-stamped too. It uses stage labels
+such as `boot/agent-attach`, `bytecode/prescan`, `bytecode/rewrite-result`,
+`model/route-rule`, `runtime/unsafe-call-route`, `synthetic/event-state`,
+`synthetic/multi-region`, and `compat/nms-shape`. Use it when you want to
+follow how FBB classified an operation before reading the full noisy evidence.
+
+The same file also receives compact `[FBB architecture-decision]` summaries.
+These are pathfinding breadcrumbs, not behavior changes. They cover:
+
+- `decision/summary`: input -> owner -> route -> action -> result -> next
+- `decision/owner/extract`: owner source, found/missed status, and lane result
+- `decision/owner/miss`: why owner extraction failed
+- `decision/return/sync-risk`: void, primitive/object return, split/aggregate,
+  bounded wait, proxy/model, or accepted-boolean risk
+- `decision/route/exit`: known owner route leaving the synthetic lane
+- `decision/route/stay-serialized`: unknown/unproven behavior staying in the
+  single-thread compatibility lane
+- `decision/policy/blocked`: intentional refusal, typed skip, guarded path,
+  preserved failure, or server-stopping abandon
+- `decision/promotion/evidence`: known route observed inside an unknown/shared
+  context that may become a future route rule
+- `decision/helper/visibility`: whether rewritten plugin bytecode can resolve
+  FBB helper classes such as `UnsafeCallBridge`
+
+Built-in listener callbacks add:
+
+- `[FBB synthetic-listener-boundary]`: a server-fired listener callback entered
+  the synthetic boundary through `RegisteredListener#callEvent(Event)`.
+- `marker=FBB_SYNTHETIC_LISTENER_BOUNDARY_V1`: stable search marker for this
+  boundary.
+- `lane=listener-boundary-lock`: FBB kept execution on the current likely
+  Folia owner thread and serialized the listener boundary with a lock, avoiding
+  deadlocks where a known route exit needs that owner to keep ticking.
+- `single-thread-compatibility-lane`: FBB used the existing compatibility lane
+  when the callback was not already running on a likely owner thread.
+
+Contract wording is intentional. Unknown does not mean FBB proved a path is
+unsafe; it means no specific route, return, or mutation contract has been
+proven for that shape yet. Shared custom-event paths can still run through the
+serialized compatibility lane while known Bukkit/Paper calls inside them exit
+through owner routes. Common labels:
+
+```text
+policy=no-contract-yet
+result=serialized-unproven
+result=no-owner-contract
+result=contract-missing
+result=contract-disabled
+result=contract-rejected
+policy=entity-owner-read-return
+contract=entity-owner-read-return
+```
+
+`entity-owner-read-return` is the named contract for hot
+`Entity`/`Player#getLocation()` and `Entity`/`Player#getWorld()` reads. It means
+the receiver entity is the owner; it does not prove arbitrary surrounding
+plugin logic is thread-safe.
+
+Each architecture decision keeps both a human path and a stable marker. Search
+`path=owner/extract` when reading by eye, or search
+`marker=FBB_ARCH_OWNER_EXTRACT_V1` when comparing logs with tooling. Current
+markers are:
+
+```text
+FBB_ARCH_DECISION_SUMMARY_V1
+FBB_ARCH_OWNER_EXTRACT_V1
+FBB_ARCH_OWNER_MISS_V1
+FBB_ARCH_RETURN_RISK_V1
+FBB_ARCH_ROUTE_EXIT_V1
+FBB_ARCH_STAY_SERIALIZED_V1
+FBB_ARCH_POLICY_BLOCKED_V1
+FBB_ARCH_PROMOTION_EVIDENCE_V1
+FBB_ARCH_HELPER_VISIBILITY_V1
+FBB_ARCH_DECISION_V1
+FBB_ARCH_DIAGNOSTIC_BACKPRESSURE_V1
+FBB_SYNTHETIC_LISTENER_BOUNDARY_V1
+```
+
+With `consoleVerbose=false`, the console is a summary channel. High-volume
+transform skips, candidate scans, model summaries, repeat summaries, and
+deliberate synthetic listener route-exit probe failures stay in `debug.log`.
+That does not silence evidence; it moves the noisy laboratory detail to the
+file designed for it.
 
 ## Attach Logs
 
@@ -187,12 +336,24 @@ FBB checks this when a class is rewritten:
 [FBB helper-visibility] class=<plugin class> loader=<classloader> helper=UnsafeCallBridge result=<already-visible|patched-visible|patched-still-missing|not-visible|failed> action=<...> note=rewritten-plugin-bytecode-must-resolve-bridge-runtime
 ```
 
-`patched-visible` means FBB added its own jar to Paper's plugin library loader
-and verified that the helper can now be resolved. `patched-still-missing` or
-`failed` means the transform evidence should be kept, but that rewritten
-callsite may still fail at runtime because the plugin loader cannot see the
-bridge helper. This is not a route-family decision; it is loader compatibility
-evidence for rewritten bytecode.
+The Java agent first appends the FBB jar to the system classloader search path
+so Bukkit-style plugin classloaders can resolve bridge helpers from their
+parent loader:
+
+```text
+[FBB classpath] bridge-jar-appended-to-system-search=FoliaBytecodeBridge.jar
+```
+
+`patched-visible` means FBB also added its own jar to the relevant runtime
+loader and verified that the helper can now be resolved. For Paper plugin
+classes this usually appears as `action=paper-library-loader-add-url`. For
+rewritten Bukkit/Folia API boundaries such as `RegisteredListener#callEvent`,
+it can appear as `action=urlclassloader-add-url` because those classes may live
+in a plain API `URLClassLoader`. `patched-still-missing` or `failed` means the
+transform evidence should be kept, but that rewritten callsite may still fail
+at runtime because the loader cannot see the bridge helper. This is not a
+route-family decision; it is loader compatibility evidence for rewritten
+bytecode.
 
 On a real Paperclip/Folia server, debug mode also reports:
 
@@ -209,6 +370,18 @@ During Paperclip/Folia bootstrap, `foliabytecodebridge.traceTransformSkips=true`
 ```
 
 That skip is expected before the real Bukkit API is visible to the Java agent. It is not the same as a transformer failure. A useful failure signal is a later `[FBB transform-error]` on a plugin-owned class after Bukkit has started loading plugins.
+
+If startup fails before Folia boots with:
+
+```text
+NoClassDefFoundError: net/bytebuddy/matcher/ElementMatcher
+```
+
+the agent jar is missing the package names referenced by the compiled agent
+classes. This is a packaging failure, not a route-family failure. Rebuild the
+release jar with the bundled agent dependencies visible inside the same jar
+under `net/bytebuddy/...`, then confirm `java -javaagent:FoliaBytecodeBridge.jar
+-version` reaches `[FBB attach]`.
 
 Optional soft-dependency misses are treated as transform skips instead of
 transform errors. This covers the general Byte Buddy resolution shape:
@@ -228,16 +401,27 @@ Before the typed Byte Buddy substitution pass runs, the bridge now performs a
 read-only raw bytecode candidate scan:
 
 ```text
-[FBB candidate-scan] marker=typed-route-prescan-v1 class=<class> loader=<classloader> action=<observe-route-candidate|observe-no-route-candidate|observe-scan-unknown> category=<ROUTE_CANDIDATE|NO_REGISTERED_ROUTE_CANDIDATE|TYPE_METADATA_ONLY|SCAN_UNKNOWN> typedTransform=still-attempted reason=<asm summary or scan reason> note=diagnostic-bytecode-prescan-before-typed-transform
+[FBB candidate-scan] marker=typed-route-prescan-v1 class=<class> loader=<classloader> action=<observe-route-candidate|observe-no-route-candidate|observe-scan-unknown> category=<ROUTE_CANDIDATE|NO_REGISTERED_ROUTE_CANDIDATE|TYPE_METADATA_ONLY|SCAN_UNKNOWN> typedTransform=<attempted|skipped-no-registered-route-candidate> reason=<asm summary or scan reason> note=diagnostic-bytecode-prescan-before-typed-transform
 ```
 
 This marker is intentionally specific so noisy debug logs can be audited for
-false positives without hiding unknown route shapes. The scan never blocks the
-typed transform; `typedTransform=still-attempted` is printed on every line to
-make that clear. `TYPE_METADATA_ONLY` is a hint for custom event/annotation
-metadata classes that have no registered method-call route candidates but may
-still upset typed metadata inspection. It is diagnostic evidence, not a safety
-decision.
+false positives without hiding unknown route shapes. Raw ASM transformers still
+see the class before this decision. The typed Byte Buddy substitution pass now
+runs only when the prescan finds a registered route candidate, or when the scan
+itself is unknown. `TYPE_METADATA_ONLY` and `NO_REGISTERED_ROUTE_CANDIDATE`
+classes print `typedTransform=skipped-no-registered-route-candidate`, which keeps
+unrelated helper/event classes with unusual type-use metadata out of Byte
+Buddy's validation path while preserving exact raw-bytecode route coverage.
+
+If Byte Buddy still rejects a candidate because of unusual type-use metadata,
+the bridge emits:
+
+```text
+[FBB transform-skip] reason=bytebuddy-type-metadata-shape action=skip-typed-transform-preserve-raw-routes
+```
+
+That is not a route failure. It means the typed substitution layer skipped a
+class shape that raw ASM transformers can still inspect by owner/name/descriptor.
 
 Method-reference rewrites also have a narrow safety boundary. If an
 `invokedynamic` method reference captures a receiver as one Bukkit interface
@@ -278,10 +462,19 @@ diagnostics, and smoke tests. Each registered rule carries:
 - translation status, such as `EXPERIMENTAL_REWRITE`, `TRACE_ONLY`, or `MISSED`
 - a short note explaining why the route exists
 
+Runtime evidence is normalized back to `RouteRuleRegistry` when possible. For
+example, a runtime model line for
+`World#getNearbyEntities(Location,double,double,double)` can inherit the policy
+from the exact `org/bukkit/World#getNearbyEntities` bytecode rule. This keeps
+known routes out of the dynamic bucket even when the runtime log uses a shorter
+API label.
+
 Dynamic/generalized detections still exist for shapes that cannot safely be
-represented as a single exact owner, such as shaded teleport helpers. Those
-lines print `routeRulePolicy=dynamic-or-unregistered` so future passes can tell
-the difference between a central rule and an observed dynamic shape.
+represented as a single exact owner, such as shaded teleport helpers, and for
+new evidence that does not yet match a stable route. Lines that still print
+`routeRulePolicy=dynamic-or-unregistered` should be treated as real homework:
+either promote the exact route, give the generic detector a named policy, or
+leave it dynamic with a clear reason.
 
 Read `[FBB model]` as the current route-family model for a method, not as proof
 that the method is fully safe. For example, `status=blocked-sync-return` means
@@ -314,7 +507,7 @@ When `traceBytecodePaths=true`, every raw scheduler rewrite explains the exact b
 [FBB bytecode-path] class=<class> in=<method><descriptor> source=<owner>#<name><descriptor> route=<S_GLOBAL|S_ASYNC> bridge=ObjectSchedulerBridge#<method><descriptor>
 ```
 
-This is the main evidence line for "did we route the right bytecode path?" A correct kit plugin reference anonymous `BukkitRunnable` route should show an owner like `pk.ajneb97.configs.PlayersConfigManager$1`, while a correct Essentials helper route should show `source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(...)`, not `source=com.earth2me.essentials.Essentials#runTaskAsynchronously(...)`.
+This is the main evidence line for "did we route the right bytecode path?" A correct anonymous `BukkitRunnable` route should show an owner like `example/config/ExampleTask$1`, while a correct plugin helper route should show `source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(...)`, not `source=example/plugin/ExamplePlugin#runTaskAsynchronously(...)`.
 
 ## Teleport Path Logs
 
@@ -324,7 +517,7 @@ Teleport family detection has its own bytecode evidence line:
 [FBB teleport-path] class=<plugin class> loader=<classloader> jar=<plugin jar or classes dir> in=<method><descriptor> owner=<bytecode owner> name=<method> descriptor=<descriptor> route=A_ENTITY rule=<bukkit-api-owner|generic-shape|generic-shape-probe|generic-helper-shape|exact-owner> action=<rewritten|trace-only|missed> outcome=<detail> bridge=<bridge or none>
 ```
 
-Use this for Essentials `/home`-style failures and other teleport helpers. The bridge is not checking command names or plugin names. It groups calls by bytecode shape:
+Use this for home-command teleport-style failures and other teleport helpers. The bridge is not checking command names or plugin names. It groups calls by bytecode shape:
 
 - `rule=bukkit-api-owner action=rewritten outcome=rewritten-direct-teleport-async-shim`: direct sync Bukkit API calls such as `Entity#teleport(Location)` or `Player#teleport(Location,TeleportCause)` are rewritten to `UnsafeCallBridge`, which uses `teleportAsync` on Folia.
 - `rule=bukkit-api-owner action=trace-only outcome=typed-transform-expected`: direct Bukkit API calls that are already async, such as `Entity#teleportAsync(Location,TeleportCause)`, are observed by the raw scanner and left on their original async path.
@@ -473,6 +666,21 @@ The sync teleport wrappers are stronger: on Folia, `Entity#teleport(Location...)
 Player audio maps to `A_ENTITY`, and chunk-coordinate world calls map to `B_REGION_LOCATION`, so the emitted labels stay inside the official route-family set.
 Async teleport probes such as `Entity#teleportAsync(Location,TeleportCause)` and generic static `teleportAsync(Entity|Player,Location,TeleportCause)` helpers also log a later `[FBB unsafe-failure]` if their returned future completes exceptionally. That is not error silencing; the same exceptional future is returned to the caller.
 
+Generic helper detections are not always exact `RouteRuleRegistry` entries
+because shaded owners intentionally vary. In `[FBB model]` output, those paths
+use named generic policies instead of the old generic "dynamic" wording:
+
+```text
+routeRulePolicy=GENERIC_SHAPE
+routeRulePolicy=GENERIC_HELPER_SHAPE
+routeRulePolicy=GENERIC_SHAPE_PROBE
+```
+
+`GENERIC_SHAPE` means a documented ownerless bytecode shape was rewritten.
+`GENERIC_HELPER_SHAPE` means the helper was observed trace-only so FBB does not
+override a library that may already schedule correctly. `GENERIC_SHAPE_PROBE`
+means the shape was close enough to log, but the bridge contract is not proven.
+
 `Entity#getNearbyEntities(...)` and `Player#getNearbyEntities(...)` are
 `G_WORLD_SCAN_SPLIT` return-value routes. Owned entity calls stay direct, async
 callers can wait for the entity scheduler, and Folia owner/global/foreign-region
@@ -484,6 +692,17 @@ If the original call throws, the bridge also logs:
 ```text
 [FBB unsafe-failure] api=<direct Bukkit api> route=<S_GLOBAL|A_ENTITY|B_REGION_LOCATION|C_REGION_BLOCK|D_PLAYER_UI|F_PLAYER_VISIBILITY|G_WORLD_SCAN_SPLIT> family=<global|entity|player|entity-scan|region|world-scan> next=<suggested scheduler family> probableFrame=<class#method(file:line)> throwable=<exception>
 ```
+
+During shutdown, a scheduled return-value fallback may not complete because the
+bridge/probe plugin is disabled or Folia has stopped ticking the owner region.
+Those lines stay visible but are classified as lifecycle evidence:
+
+```text
+[FBB unsafe-failure] ... classification=server-stopping action=abandon-scheduled-fallback
+```
+
+That means the bridge did not fabricate a return value and did not call the path
+safe. It only separated shutdown/probe timing from normal route failure triage.
 
 Return-value routes may also emit:
 

@@ -17,19 +17,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-final class SelfAttachInstaller {
+public final class SelfAttachInstaller {
 
     private static final long ATTACH_TIMEOUT_SECONDS = 20L;
 
     private SelfAttachInstaller() {
     }
 
-    static void installFromPlugin(JavaPlugin plugin, File jarFile) {
+    /**
+     * Public bootstrap boundary for plugin-only startup.
+     *
+     * <p>Even though self-attach is not the preferred startup mode, the plugin
+     * entrypoint can link this class through the helper-runtime loader, so the
+     * method must be public across that boundary.</p>
+     */
+    public static void installFromPlugin(JavaPlugin plugin, File jarFile) {
         Logger logger = plugin.getLogger();
         BridgeDiagnostics.setLogger(logger);
 
-        if (FoliaBytecodeBridgeAgent.isInstalled()
-                || Boolean.parseBoolean(System.getProperty("foliabytecodebridge.agentInstalled", "false"))) {
+        if (agentInstalled()) {
             String mode = System.getProperty("foliabytecodebridge.agentMode", "JAVA_AGENT");
             logger.info("[FBB attach] mode=" + mode + " installed=true phase=onLoad reason=already-installed");
             return;
@@ -118,6 +124,14 @@ final class SelfAttachInstaller {
         if (text == null || text.isBlank()) return "none";
         String compacted = text.replace('\r', ' ').replace('\n', ' ').trim();
         return compacted.length() <= 500 ? compacted : compacted.substring(0, 500) + "...";
+    }
+
+    private static boolean agentInstalled() {
+        // Avoid touching FoliaBytecodeBridgeAgent from plugin bootstrap. That
+        // class intentionally imports Byte Buddy for transformation, while this
+        // installer can also run from the helper-runtime loader before Byte
+        // Buddy is visible there.
+        return Boolean.parseBoolean(System.getProperty("foliabytecodebridge.agentInstalled", "false"));
     }
 
     private static final class AttachResult {

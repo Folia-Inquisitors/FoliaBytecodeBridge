@@ -40,7 +40,9 @@ final class RouteRuleRegistry {
 
     private static final String BLOCK = "Lorg/bukkit/block/Block;";
     private static final String BLOCK_DATA = "Lorg/bukkit/block/data/BlockData;";
+    private static final String BUKKIT_TASK = "Lorg/bukkit/scheduler/BukkitTask;";
     private static final String CAUSE = "Lorg/bukkit/event/player/PlayerTeleportEvent$TeleportCause;";
+    private static final String CALLABLE = "Ljava/util/concurrent/Callable;";
     private static final String CHAT_COLOR = "Lorg/bukkit/ChatColor;";
     private static final String CHUNK = "Lorg/bukkit/Chunk;";
     private static final String CHUNK_ARRAY = "[Lorg/bukkit/Chunk;";
@@ -56,6 +58,8 @@ final class RouteRuleRegistry {
     private static final String ENTITY_LIST = "Ljava/util/List;";
     private static final String ENTITY_TYPE = "Lorg/bukkit/entity/EntityType;";
     private static final String EVENT = "Lorg/bukkit/event/Event;";
+    private static final String FUTURE = "Ljava/util/concurrent/Future;";
+    private static final String GAME_MODE = "Lorg/bukkit/GameMode;";
     private static final String HUMAN_ENTITY = "Lorg/bukkit/entity/HumanEntity;";
     private static final String INVENTORY = "Lorg/bukkit/inventory/Inventory;";
     private static final String INVENTORY_VIEW = "Lorg/bukkit/inventory/InventoryView;";
@@ -70,9 +74,11 @@ final class RouteRuleRegistry {
     private static final String OBJECTIVE = "Lorg/bukkit/scoreboard/Objective;";
     private static final String OFFLINE_PLAYER = "Lorg/bukkit/OfflinePlayer;";
     private static final String PLAYER = "Lorg/bukkit/entity/Player;";
+    private static final String PLUGIN = "Lorg/bukkit/plugin/Plugin;";
     private static final String POTION_EFFECT = "Lorg/bukkit/potion/PotionEffect;";
     private static final String POTION_EFFECT_TYPE = "Lorg/bukkit/potion/PotionEffectType;";
     private static final String RENDER_TYPE = "Lorg/bukkit/scoreboard/RenderType;";
+    private static final String RUNNABLE = "Ljava/lang/Runnable;";
     private static final String SCORE = "Lorg/bukkit/scoreboard/Score;";
     private static final String SCOREBOARD = "Lorg/bukkit/scoreboard/Scoreboard;";
     private static final String SCOREBOARD_MANAGER = "Lorg/bukkit/scoreboard/ScoreboardManager;";
@@ -83,6 +89,7 @@ final class RouteRuleRegistry {
     private static final String TEAM_OPTION = "Lorg/bukkit/scoreboard/Team$Option;";
     private static final String TEAM_OPTION_STATUS = "Lorg/bukkit/scoreboard/Team$OptionStatus;";
     private static final String TREE_TYPE = "Lorg/bukkit/TreeType;";
+    private static final String VECTOR = "Lorg/bukkit/util/Vector;";
     private static final String WORLD = "Lorg/bukkit/World;";
 
     private static final List<RouteRule> RULES = new ArrayList<>();
@@ -90,6 +97,107 @@ final class RouteRuleRegistry {
     private static final Map<String, RouteRule> RUNTIME_API = new ConcurrentHashMap<>();
 
     static {
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "runTask",
+                "(" + PLUGIN + RUNNABLE + ")" + BUKKIT_TASK,
+                "runTask", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + ")Ljava/lang/Object;",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy sync scheduler task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "runTaskLater",
+                "(" + PLUGIN + RUNNABLE + "J)" + BUKKIT_TASK,
+                "runTaskLater", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "J)Ljava/lang/Object;",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy delayed sync scheduler task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "runTaskTimer",
+                "(" + PLUGIN + RUNNABLE + "JJ)" + BUKKIT_TASK,
+                "runTaskTimer", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "JJ)Ljava/lang/Object;",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy repeating sync scheduler task routes through Folia global scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "runTaskAsynchronously",
+                "(" + PLUGIN + RUNNABLE + ")" + BUKKIT_TASK,
+                "runTaskAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + ")Ljava/lang/Object;",
+                "legacy async scheduler task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "runTaskLaterAsynchronously",
+                "(" + PLUGIN + RUNNABLE + "J)" + BUKKIT_TASK,
+                "runTaskLaterAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "J)Ljava/lang/Object;",
+                "legacy delayed async scheduler task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "runTaskTimerAsynchronously",
+                "(" + PLUGIN + RUNNABLE + "JJ)" + BUKKIT_TASK,
+                "runTaskTimerAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "JJ)Ljava/lang/Object;",
+                "legacy repeating async scheduler task routes through Folia async scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "scheduleSyncDelayedTask",
+                "(" + PLUGIN + RUNNABLE + ")I",
+                "scheduleSyncDelayedTask", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + ")I",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy int-id sync delayed task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "scheduleSyncDelayedTask",
+                "(" + PLUGIN + RUNNABLE + "J)I",
+                "scheduleSyncDelayedTaskLater", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "J)I",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy int-id delayed sync task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "scheduleSyncRepeatingTask",
+                "(" + PLUGIN + RUNNABLE + "JJ)I",
+                "scheduleSyncRepeatingTask", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "JJ)I",
+                "BukkitScheduler#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy int-id repeating sync task routes through Folia global scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "scheduleAsyncDelayedTask",
+                "(" + PLUGIN + RUNNABLE + ")I",
+                "scheduleAsyncDelayedTask", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + ")I",
+                "legacy int-id async delayed task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "scheduleAsyncDelayedTask",
+                "(" + PLUGIN + RUNNABLE + "J)I",
+                "scheduleAsyncDelayedTaskLater", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "J)I",
+                "legacy int-id delayed async task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitScheduler", "scheduleAsyncRepeatingTask",
+                "(" + PLUGIN + RUNNABLE + "JJ)I",
+                "scheduleAsyncRepeatingTask", "(Ljava/lang/Object;Ljava/lang/Object;" + RUNNABLE + "JJ)I",
+                "legacy int-id repeating async task routes through Folia async scheduler");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "callSyncMethod",
+                "(" + PLUGIN + CALLABLE + ")" + FUTURE,
+                null, null, "BukkitScheduler#global-callable",
+                ReturnPolicy.DEFERRED_PROXY_RETURN, "legacy callSyncMethod is global-owned future work");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "cancelTask",
+                "(I)V", "cancelTask", "(Ljava/lang/Object;I)V",
+                "BukkitScheduler#task-cancel", ReturnPolicy.VOID_FIRE_AND_FORGET,
+                "synthetic Bukkit task ids cancel through bridge task registry");
+        scheduler("org/bukkit/scheduler/BukkitScheduler", "cancelTasks",
+                "(" + PLUGIN + ")V", "cancelTasks", "(Ljava/lang/Object;Ljava/lang/Object;)V",
+                "BukkitScheduler#task-cancel", ReturnPolicy.VOID_FIRE_AND_FORGET,
+                "synthetic Bukkit task ids cancel by plugin through bridge task registry");
+
+        scheduler("org/bukkit/scheduler/BukkitRunnable", "runTask",
+                "(" + PLUGIN + ")" + BUKKIT_TASK,
+                "bukkitRunnableRunTask", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                "BukkitRunnable#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy BukkitRunnable sync task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitRunnable", "runTaskLater",
+                "(" + PLUGIN + "J)" + BUKKIT_TASK,
+                "bukkitRunnableRunTaskLater", "(Ljava/lang/Object;Ljava/lang/Object;J)Ljava/lang/Object;",
+                "BukkitRunnable#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy BukkitRunnable delayed sync task routes through Folia global scheduler");
+        scheduler("org/bukkit/scheduler/BukkitRunnable", "runTaskTimer",
+                "(" + PLUGIN + "JJ)" + BUKKIT_TASK,
+                "bukkitRunnableRunTaskTimer", "(Ljava/lang/Object;Ljava/lang/Object;JJ)Ljava/lang/Object;",
+                "BukkitRunnable#global-task", ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                "legacy BukkitRunnable repeating sync task routes through Folia global scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitRunnable", "runTaskAsynchronously",
+                "(" + PLUGIN + ")" + BUKKIT_TASK,
+                "bukkitRunnableRunTaskAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                "legacy BukkitRunnable async task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitRunnable", "runTaskLaterAsynchronously",
+                "(" + PLUGIN + "J)" + BUKKIT_TASK,
+                "bukkitRunnableRunTaskLaterAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;J)Ljava/lang/Object;",
+                "legacy BukkitRunnable delayed async task routes through Folia async scheduler");
+        schedulerAsync("org/bukkit/scheduler/BukkitRunnable", "runTaskTimerAsynchronously",
+                "(" + PLUGIN + "JJ)" + BUKKIT_TASK,
+                "bukkitRunnableRunTaskTimerAsynchronously", "(Ljava/lang/Object;Ljava/lang/Object;JJ)Ljava/lang/Object;",
+                "legacy BukkitRunnable repeating async task routes through Folia async scheduler");
+        scheduler("org/bukkit/scheduler/BukkitRunnable", "isCancelled",
+                "()Z", null, null, "BukkitRunnable#task-state",
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, "BukkitRunnable cancellation state is bridge-modeled when possible");
+        scheduler("org/bukkit/scheduler/BukkitRunnable", "cancel",
+                "()V", null, null, "BukkitRunnable#task-cancel",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, "BukkitRunnable cancel maps to bridge task handle when possible");
+
         scheduler("org/bukkit/Bukkit", "dispatchCommand", "(" + COMMAND_SENDER + STRING + ")Z",
                 "bukkitDispatchCommand", "(" + COMMAND_SENDER + STRING + ")Z",
                 "CraftServer#dispatchCommand", ReturnPolicy.ACCEPTED_BOOLEAN,
@@ -103,13 +211,13 @@ final class RouteRuleRegistry {
                 RouteFamily.S_GLOBAL, "MCUtil#main-executor",
                 "mcUtilMainExecutorExecute", "(Ljava/util/concurrent/Executor;Ljava/lang/Runnable;)V",
                 ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
-                "Paper MCUtil main executor schedules through Folia global scheduler");
+                "NMS executor-context shim; currently schedules through Folia global scheduler and logs NMS_EXECUTOR_CONTEXT when owner context is missing");
         runtime("MinecraftServer#execute", "net/minecraft/server/MinecraftServer",
                 "execute", "(Ljava/lang/Runnable;)V",
                 RouteFamily.S_GLOBAL, "MinecraftServer#server-executor",
                 "minecraftServerExecute", "(Ljava/lang/Object;Ljava/lang/Runnable;)V",
                 ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
-                "NMS MinecraftServer executor schedules through Folia global scheduler");
+                "NMS executor-context shim; currently schedules through Folia global scheduler and logs NMS_EXECUTOR_CONTEXT when owner context is missing");
         add("org/bukkit/plugin/PluginManager", "callEvent", "(" + EVENT + ")V",
                 RouteFamily.S_GLOBAL, "PluginManager#shared-event-dispatch",
                 "pluginManagerCallEvent", "(Lorg/bukkit/plugin/PluginManager;" + EVENT + ")V",
@@ -136,6 +244,96 @@ final class RouteRuleRegistry {
                 "playerTeleport", "(" + PLAYER + LOCATION + CAUSE + ")Z",
                 ReturnPolicy.ACCEPTED_BOOLEAN, TranslationStatus.EXPERIMENTAL_REWRITE,
                 "direct player teleport with cause submits teleportAsync and returns scheduled acceptance");
+        add("org/bukkit/entity/Entity", "teleportAsync", "(" + LOCATION + CAUSE + ")Ljava/util/concurrent/CompletableFuture;",
+                RouteFamily.A_ENTITY, "CraftEntity#teleportAsync",
+                "entityTeleportAsync", "(" + ENTITY + LOCATION + CAUSE + ")Ljava/util/concurrent/CompletableFuture;",
+                ReturnPolicy.ASYNC_FUTURE, TranslationStatus.TRACE_ONLY,
+                "already-async entity teleport is observed as entity-owned");
+        add("org/bukkit/entity/Entity", "getLocation", "()" + LOCATION,
+                RouteFamily.A_ENTITY, "CraftEntity#entity-read",
+                "entityGetLocation", "(" + ENTITY + ")" + LOCATION,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "entity location read owns receiver entity");
+        add("org/bukkit/entity/Entity", "getWorld", "()" + WORLD,
+                RouteFamily.A_ENTITY, "CraftEntity#entity-read",
+                "entityGetWorld", "(" + ENTITY + ")" + WORLD,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "entity world read owns receiver entity");
+        add("org/bukkit/entity/Entity", "setVelocity", "(" + VECTOR + ")V",
+                RouteFamily.A_ENTITY, "CraftEntity#entity-mutation",
+                "entitySetVelocity", "(" + ENTITY + VECTOR + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "entity velocity mutation owns receiver entity");
+        add("org/bukkit/entity/Entity", "remove", "()V",
+                RouteFamily.A_ENTITY, "CraftEntity#entity-mutation",
+                "entityRemove", "(" + ENTITY + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "entity removal owns receiver entity");
+        add("org/bukkit/entity/Player", "setVelocity", "(" + VECTOR + ")V",
+                RouteFamily.A_ENTITY, "CraftEntity#entity-mutation",
+                "playerSetVelocity", "(" + PLAYER + VECTOR + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player velocity mutation owns receiver entity");
+        add("org/bukkit/entity/Player", "getLocation", "()" + LOCATION,
+                RouteFamily.A_ENTITY, "CraftEntity#entity-read",
+                "playerGetLocation", "(" + PLAYER + ")" + LOCATION,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player location read owns receiver entity");
+        add("org/bukkit/entity/Player", "getWorld", "()" + WORLD,
+                RouteFamily.A_ENTITY, "CraftEntity#entity-read",
+                "playerGetWorld", "(" + PLAYER + ")" + WORLD,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player world read owns receiver entity");
+        add("org/bukkit/entity/Player", "setGameMode", "(" + GAME_MODE + ")V",
+                RouteFamily.A_ENTITY, "CraftHumanEntity#player-state",
+                "playerSetGameMode", "(" + PLAYER + GAME_MODE + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player game mode mutation owns receiver entity");
+        add("org/bukkit/entity/HumanEntity", "setGameMode", "(" + GAME_MODE + ")V",
+                RouteFamily.A_ENTITY, "CraftHumanEntity#player-state",
+                "humanSetGameMode", "(" + HUMAN_ENTITY + GAME_MODE + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "human game mode mutation owns receiver entity");
+        add("org/bukkit/entity/Player", "hidePlayer", "(" + PLUGIN + PLAYER + ")V",
+                RouteFamily.F_PLAYER_VISIBILITY, "CraftPlayer#visibility",
+                "playerHidePlayer", "(" + PLAYER + PLUGIN + PLAYER + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player visibility mutation owns viewer/target entity path");
+        add("org/bukkit/entity/Player", "showPlayer", "(" + PLUGIN + PLAYER + ")V",
+                RouteFamily.F_PLAYER_VISIBILITY, "CraftPlayer#visibility",
+                "playerShowPlayer", "(" + PLAYER + PLUGIN + PLAYER + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player visibility mutation owns viewer/target entity path");
+        add("org/bukkit/entity/Player", "hidePlayer", "(" + PLAYER + ")V",
+                RouteFamily.F_PLAYER_VISIBILITY, "CraftPlayer#visibility",
+                "playerHidePlayerLegacy", "(" + PLAYER + PLAYER + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "legacy player visibility mutation owns viewer/target entity path");
+        add("org/bukkit/entity/Player", "showPlayer", "(" + PLAYER + ")V",
+                RouteFamily.F_PLAYER_VISIBILITY, "CraftPlayer#visibility",
+                "playerShowPlayerLegacy", "(" + PLAYER + PLAYER + ")V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "legacy player visibility mutation owns viewer/target entity path");
+        add("org/bukkit/entity/Player", "playSound", "(" + LOCATION + SOUND + "FF)V",
+                RouteFamily.A_ENTITY, "CraftPlayer#audio",
+                "playerPlaySound", "(" + PLAYER + LOCATION + SOUND + "FF)V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player sound emission is player/entity-owned");
+        add("org/bukkit/entity/Player", "playSound", "(" + LOCATION + STRING + "FF)V",
+                RouteFamily.A_ENTITY, "CraftPlayer#audio",
+                "playerPlaySound", "(" + PLAYER + LOCATION + STRING + "FF)V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "player string sound emission is player/entity-owned");
+        add("org/bukkit/entity/Player", "playSound", "(" + LOCATION + SOUND + SOUND_CATEGORY + "FF)V",
+                RouteFamily.A_ENTITY, "CraftPlayer#audio",
+                "playerPlaySound", "(" + PLAYER + LOCATION + SOUND + SOUND_CATEGORY + "FF)V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "categorized player sound emission is player/entity-owned");
+        add("org/bukkit/entity/Player", "playSound", "(" + LOCATION + STRING + SOUND_CATEGORY + "FF)V",
+                RouteFamily.A_ENTITY, "CraftPlayer#audio",
+                "playerPlaySound", "(" + PLAYER + LOCATION + STRING + SOUND_CATEGORY + "FF)V",
+                ReturnPolicy.VOID_FIRE_AND_FORGET, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "categorized player string sound emission is player/entity-owned");
 
         add("org/bukkit/entity/Entity", "getNearbyEntities", "(DDD)" + ENTITY_LIST,
                 RouteFamily.G_WORLD_SCAN_SPLIT, "Entity#getNearbyEntities",
@@ -343,6 +541,16 @@ final class RouteRuleRegistry {
                 "worldGetChunkAt", "(" + WORLD + "II)" + CHUNK,
                 ReturnPolicy.DEFERRED_PROXY_RETURN, TranslationStatus.EXPERIMENTAL_REWRITE,
                 "chunk read uses owner scheduler, loaded-index, or deferred proxy");
+        add("org/bukkit/World", "getBlockAt", "(III)" + BLOCK,
+                RouteFamily.C_REGION_BLOCK, "CraftWorld#block-read",
+                "worldGetBlockAt", "(" + WORLD + "III)" + BLOCK,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "coordinate block read owns the target block region");
+        add("org/bukkit/World", "getBlockAt", "(" + LOCATION + ")" + BLOCK,
+                RouteFamily.B_REGION_LOCATION, "CraftWorld#block-read",
+                "worldGetBlockAt", "(" + WORLD + LOCATION + ")" + BLOCK,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "location block read owns the target region");
         add("org/bukkit/World", "getChunkAt", "(" + LOCATION + ")" + CHUNK,
                 RouteFamily.B_REGION_LOCATION, "CraftWorld#chunk-read",
                 "worldGetChunkAt", "(" + WORLD + LOCATION + ")" + CHUNK,
@@ -470,6 +678,11 @@ final class RouteRuleRegistry {
                 "blockGetBlockData", "(" + BLOCK + ")" + BLOCK_DATA,
                 ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
                 "block data read owns block region; live visualization paths commonly call this after scheduler hops");
+        add("org/bukkit/block/Block", "getLocation", "()" + LOCATION,
+                RouteFamily.C_REGION_BLOCK, "CraftBlock#block-read",
+                "blockGetLocation", "(" + BLOCK + ")" + LOCATION,
+                ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER, TranslationStatus.EXPERIMENTAL_REWRITE,
+                "block location read owns block region");
         add("org/bukkit/block/Block", "setType", "(" + MATERIAL + ")V",
                 RouteFamily.C_REGION_BLOCK, "CraftBlock#block-mutation",
                 "blockSetType", "(" + BLOCK + MATERIAL + ")V",
@@ -485,7 +698,11 @@ final class RouteRuleRegistry {
     }
 
     static Optional<RouteRule> matchRuntimeApi(String api) {
-        return Optional.ofNullable(RUNTIME_API.get(api));
+        RouteRule exactAlias = RUNTIME_API.get(api);
+        if (exactAlias != null) {
+            return Optional.of(exactAlias);
+        }
+        return matchRuntimeShape(api);
     }
 
     static List<RouteRule> rules() {
@@ -496,6 +713,13 @@ final class RouteRuleRegistry {
                                   String bridgeDescriptor, String guard, ReturnPolicy returnPolicy, String note) {
         add(owner, name, descriptor, RouteFamily.S_GLOBAL, guard, bridgeMethod, bridgeDescriptor,
                 returnPolicy, TranslationStatus.EXPERIMENTAL_REWRITE, note);
+    }
+
+    private static void schedulerAsync(String owner, String name, String descriptor, String bridgeMethod,
+                                       String bridgeDescriptor, String note) {
+        add(owner, name, descriptor, RouteFamily.S_ASYNC, "BukkitScheduler#async-task",
+                bridgeMethod, bridgeDescriptor, ReturnPolicy.SYNC_RETURN_DIRECT_OR_OWNER,
+                TranslationStatus.EXPERIMENTAL_REWRITE, note);
     }
 
     private static void runtime(String api, String owner, String name, String descriptor,
@@ -509,6 +733,110 @@ final class RouteRuleRegistry {
 
     private static void runtimeAlias(String api, RouteRule rule) {
         RUNTIME_API.put(api, rule);
+    }
+
+    private static Optional<RouteRule> matchRuntimeShape(String api) {
+        RuntimeApiShape shape = RuntimeApiShape.parse(api);
+        if (shape == null) {
+            return Optional.empty();
+        }
+        List<RouteRule> candidates = new ArrayList<>();
+        for (RouteRule rule : RULES) {
+            if (!shape.matches(rule)) continue;
+            candidates.add(rule);
+        }
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        RouteRule signatureMatch = bestSignatureMatch(shape, candidates);
+        if (signatureMatch != null) {
+            return Optional.of(signatureMatch);
+        }
+        RouteRule unambiguous = candidates.get(0);
+        for (int index = 1; index < candidates.size(); index++) {
+            RouteRule candidate = candidates.get(index);
+            if (candidate.routeFamily() != unambiguous.routeFamily()
+                    || candidate.returnPolicy() != unambiguous.returnPolicy()
+                    || candidate.status() != unambiguous.status()) {
+                return Optional.empty();
+            }
+        }
+        return Optional.of(unambiguous);
+    }
+
+    private static RouteRule bestSignatureMatch(RuntimeApiShape shape, List<RouteRule> candidates) {
+        if (shape.signature == null || shape.signature.isBlank()) {
+            return null;
+        }
+        List<String> runtimeTypes = shape.signatureTypes();
+        if (runtimeTypes.isEmpty()) {
+            return null;
+        }
+        for (RouteRule candidate : candidates) {
+            List<String> descriptorTypes = descriptorTypes(candidate.descriptor());
+            if (descriptorTypes.size() != runtimeTypes.size()) continue;
+            boolean match = true;
+            for (int index = 0; index < runtimeTypes.size(); index++) {
+                if (!runtimeTypes.get(index).equals(descriptorTypes.get(index))) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> descriptorTypes(String descriptor) {
+        int open = descriptor.indexOf('(');
+        int close = descriptor.indexOf(')');
+        if (open < 0 || close < open) {
+            return Collections.emptyList();
+        }
+        List<String> types = new ArrayList<>();
+        String parameters = descriptor.substring(open + 1, close);
+        for (int index = 0; index < parameters.length(); ) {
+            char token = parameters.charAt(index);
+            while (token == '[') {
+                index++;
+                if (index >= parameters.length()) return types;
+                token = parameters.charAt(index);
+            }
+            if (token == 'L') {
+                int end = parameters.indexOf(';', index);
+                if (end < 0) break;
+                String internal = parameters.substring(index + 1, end);
+                types.add(simpleName(internal));
+                index = end + 1;
+            } else {
+                types.add(primitiveName(token));
+                index++;
+            }
+        }
+        return types;
+    }
+
+    private static String primitiveName(char token) {
+        return switch (token) {
+            case 'Z' -> "boolean";
+            case 'B' -> "byte";
+            case 'C' -> "char";
+            case 'S' -> "short";
+            case 'I' -> "int";
+            case 'J' -> "long";
+            case 'F' -> "float";
+            case 'D' -> "double";
+            default -> String.valueOf(token);
+        };
+    }
+
+    private static String simpleName(String internalName) {
+        int slash = internalName.lastIndexOf('/');
+        String name = slash >= 0 ? internalName.substring(slash + 1) : internalName;
+        int dollar = name.lastIndexOf('$');
+        return dollar >= 0 ? name.substring(dollar + 1) : name;
     }
 
     private static void scoreboard(String owner, String name, String descriptor, String bridgeMethod,
@@ -549,6 +877,54 @@ final class RouteRuleRegistry {
 
         String api() {
             return owner.replace('/', '.') + "#" + name;
+        }
+    }
+
+    private record RuntimeApiShape(String ownerSimpleName, String methodName, String signature) {
+        static RuntimeApiShape parse(String api) {
+            if (api == null || api.isBlank()) {
+                return null;
+            }
+            int hash = api.indexOf('#');
+            if (hash <= 0 || hash + 1 >= api.length()) {
+                return null;
+            }
+            String owner = api.substring(0, hash);
+            String method = api.substring(hash + 1);
+            String signature = null;
+            int open = method.indexOf('(');
+            if (open >= 0) {
+                signature = method.substring(open + 1, method.endsWith(")") ? method.length() - 1 : method.length());
+                method = method.substring(0, open);
+            }
+            return new RuntimeApiShape(simpleOwner(owner), method, signature);
+        }
+
+        boolean matches(RouteRule rule) {
+            return ownerSimpleName.equals(simpleName(rule.owner()))
+                    && methodName.equals(rule.name());
+        }
+
+        List<String> signatureTypes() {
+            if (signature == null || signature.isBlank()) {
+                return Collections.emptyList();
+            }
+            List<String> types = new ArrayList<>();
+            for (String token : signature.split(",")) {
+                String type = token.trim();
+                if (!type.isEmpty()) {
+                    types.add(simpleOwner(type));
+                }
+            }
+            return types;
+        }
+
+        private static String simpleOwner(String owner) {
+            String normalized = owner.replace('/', '.');
+            int dot = normalized.lastIndexOf('.');
+            String simple = dot >= 0 ? normalized.substring(dot + 1) : normalized;
+            int dollar = simple.lastIndexOf('$');
+            return dollar >= 0 ? simple.substring(dollar + 1) : simple;
         }
     }
 }

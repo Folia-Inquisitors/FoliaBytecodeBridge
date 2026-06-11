@@ -10,7 +10,7 @@ package dev.foliabytecodebridge;
 final class BridgeBuildInfo {
 
     static final String VERSION = "0.1.1-experimental.3";
-    static final String BUILD_ID = "2026-05-31-debug-file-organization";
+    static final String BUILD_ID = "2026-06-11-nms-owner-candidate-trace";
 
     private BridgeBuildInfo() {
     }

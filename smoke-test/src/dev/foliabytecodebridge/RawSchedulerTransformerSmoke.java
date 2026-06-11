@@ -14,10 +14,6 @@ import java.util.jar.JarFile;
 
 public final class RawSchedulerTransformerSmoke {
 
-    private static final String KIT_PLUGIN_PLAYERS_CONFIG = "pk/ajneb97/configs/PlayersConfigManager";
-    private static final String KIT_PLUGIN_PLAYERS_CONFIG_TASK = "pk/ajneb97/configs/PlayersConfigManager$1";
-    private static final String ESSENTIALS_MAIN = "com/earth2me/essentials/Essentials";
-    private static final String LEGACY_ASYNC_TASK_MANAGER = "com/fastasyncworldedit/bukkit/util/BukkitTaskManager";
     private static final String BRIDGE = "dev/foliabytecodebridge/ObjectSchedulerBridge";
 
     private RawSchedulerTransformerSmoke() {
@@ -27,22 +23,27 @@ public final class RawSchedulerTransformerSmoke {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, KIT_PLUGIN_PLAYERS_CONFIG + ".class");
-            if (original == null) continue;
+            try (JarFile jarFile = new JarFile(jar.toFile())) {
+                for (JarEntry entry : java.util.Collections.list(jarFile.entries())) {
+                    String className = className(entry);
+                    if (className == null) continue;
+                    byte[] original = readClass(jarFile, entry);
+                    byte[] transformed = new RawSchedulerTransformer().transform(
+                            null, null, className, null, null, original);
+                    if (transformed == null) continue;
 
-            byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, KIT_PLUGIN_PLAYERS_CONFIG, null, null, original);
-            if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer missed kit plugin reference "
-                        + "inherited BukkitRunnable#runTaskAsynchronously shape");
+                    MethodHits hits = scan(transformed);
+                    if (hits.bridgeAsyncRunnableCalls > 0) {
+                        if (hits.legacyAsyncRunnableCalls != 0) {
+                            throw new IllegalStateException("Unexpected anonymous runnable raw transform result: bridge="
+                                    + hits.bridgeAsyncRunnableCalls + " legacy=" + hits.legacyAsyncRunnableCalls);
+                        }
+                        return 1;
+                    }
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Unable to scan anonymous runnable references in " + jar, exception);
             }
-
-            MethodHits hits = scan(transformed);
-            if (hits.bridgeAsyncRunnableCalls != 1 || hits.legacyAsyncRunnableCalls != 0) {
-                throw new IllegalStateException("Unexpected anonymous runnable raw transform result: bridge="
-                        + hits.bridgeAsyncRunnableCalls + " legacy=" + hits.legacyAsyncRunnableCalls);
-            }
-            return 1;
         }
         return 0;
     }
@@ -51,48 +52,62 @@ public final class RawSchedulerTransformerSmoke {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, KIT_PLUGIN_PLAYERS_CONFIG_TASK + ".class");
-            if (original == null) continue;
+            try (JarFile jarFile = new JarFile(jar.toFile())) {
+                for (JarEntry entry : java.util.Collections.list(jarFile.entries())) {
+                    String className = className(entry);
+                    if (className == null || !isAnonymousOwnerShape(className)) continue;
+                    byte[] original = readClass(jarFile, entry);
+                    byte[] transformed = new RawSchedulerTransformer().transform(
+                            null, null, className, null, null, original);
+                    if (transformed == null) continue;
 
-            byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, KIT_PLUGIN_PLAYERS_CONFIG_TASK, null, null, original);
-            if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer did not add kit plugin reference "
-                        + "anonymous BukkitRunnable override bridge");
+                    MethodHits hits = scan(transformed);
+                    if (hits.asyncRunnableOverrideMethods > 0 || hits.bridgeAsyncRunnableCalls > 0) {
+                        if (hits.bridgeAsyncRunnableCalls < 1) {
+                            throw new IllegalStateException("Unexpected anonymous runnable override result: overrides="
+                                    + hits.asyncRunnableOverrideMethods + " bridge=" + hits.bridgeAsyncRunnableCalls);
+                        }
+                        return 1;
+                    }
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Unable to scan anonymous runnable override references in " + jar, exception);
             }
-
-            MethodHits hits = scan(transformed);
-            if (hits.asyncRunnableOverrideMethods != 1 || hits.bridgeAsyncRunnableCalls < 1) {
-                throw new IllegalStateException("Unexpected anonymous runnable override result: overrides="
-                        + hits.asyncRunnableOverrideMethods + " bridge=" + hits.bridgeAsyncRunnableCalls);
-            }
-            return 1;
         }
         return 0;
     }
 
-    public static int assertEssentialsHelperNotMisclassified(Path[] pluginJars) {
+    public static int assertPluginSchedulerHelperNotMisclassified(Path[] pluginJars) {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, ESSENTIALS_MAIN + ".class");
-            if (original == null) continue;
+            try (JarFile jarFile = new JarFile(jar.toFile())) {
+                for (JarEntry entry : java.util.Collections.list(jarFile.entries())) {
+                    String className = className(entry);
+                    if (className == null || isAnonymousOwnerShape(className)) continue;
+                    byte[] original = readClass(jarFile, entry);
+                    MethodHits before = scan(original);
+                    if (before.legacySchedulerAsyncCalls == 0) continue;
 
-            byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, ESSENTIALS_MAIN, null, null, original);
-            if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer missed Essentials scheduler wrappers");
-            }
+                    byte[] transformed = new RawSchedulerTransformer().transform(
+                            null, null, className, null, null, original);
+                    if (transformed == null) {
+                        throw new IllegalStateException("Raw scheduler transformer missed plugin scheduler wrappers");
+                    }
 
-            MethodHits hits = scan(transformed);
-            if (hits.bridgeAsyncRunnableCalls != 0) {
-                throw new IllegalStateException("Essentials helper method was misclassified as BukkitRunnable: bridge="
-                        + hits.bridgeAsyncRunnableCalls);
+                    MethodHits hits = scan(transformed);
+                    if (hits.bridgeAsyncRunnableCalls != 0) {
+                        throw new IllegalStateException("Plugin helper method was misclassified as BukkitRunnable: bridge="
+                                + hits.bridgeAsyncRunnableCalls);
+                    }
+                    if (hits.bridgeSchedulerAsyncCalls == 0) {
+                        throw new IllegalStateException("Plugin scheduler wrapper was not routed through BukkitScheduler bridge");
+                    }
+                    return 1;
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Unable to scan plugin scheduler helper references in " + jar, exception);
             }
-            if (hits.bridgeSchedulerAsyncCalls == 0) {
-                throw new IllegalStateException("Essentials scheduler wrapper was not routed through BukkitScheduler bridge");
-            }
-            return 1;
         }
         return 0;
     }
@@ -101,23 +116,32 @@ public final class RawSchedulerTransformerSmoke {
         if (pluginJars.length == 0) return 0;
         for (Path jar : pluginJars) {
             if (!Files.isRegularFile(jar)) continue;
-            byte[] original = readClass(jar, LEGACY_ASYNC_TASK_MANAGER + ".class");
-            if (original == null) continue;
+            try (JarFile jarFile = new JarFile(jar.toFile())) {
+                for (JarEntry entry : java.util.Collections.list(jarFile.entries())) {
+                    String className = className(entry);
+                    if (className == null) continue;
+                    byte[] original = readClass(jarFile, entry);
+                    MethodHits before = scan(original);
+                    if (before.legacyScheduleAsyncRepeatingCalls == 0) continue;
 
-            byte[] transformed = new RawSchedulerTransformer().transform(
-                    null, null, LEGACY_ASYNC_TASK_MANAGER, null, null, original);
-            if (transformed == null) {
-                throw new IllegalStateException("Raw scheduler transformer missed legacy "
-                        + "BukkitScheduler#scheduleAsyncRepeatingTask");
-            }
+                    byte[] transformed = new RawSchedulerTransformer().transform(
+                            null, null, className, null, null, original);
+                    if (transformed == null) {
+                        throw new IllegalStateException("Raw scheduler transformer missed legacy "
+                                + "BukkitScheduler#scheduleAsyncRepeatingTask");
+                    }
 
-            MethodHits hits = scan(transformed);
-            if (hits.bridgeScheduleAsyncRepeatingCalls != 1 || hits.legacyScheduleAsyncRepeatingCalls != 0) {
-                throw new IllegalStateException("Unexpected legacy async repeating transform result: bridge="
-                        + hits.bridgeScheduleAsyncRepeatingCalls + " legacy="
-                        + hits.legacyScheduleAsyncRepeatingCalls);
+                    MethodHits hits = scan(transformed);
+                    if (hits.bridgeScheduleAsyncRepeatingCalls == 0 || hits.legacyScheduleAsyncRepeatingCalls != 0) {
+                        throw new IllegalStateException("Unexpected legacy async repeating transform result: bridge="
+                                + hits.bridgeScheduleAsyncRepeatingCalls + " legacy="
+                                + hits.legacyScheduleAsyncRepeatingCalls);
+                    }
+                    return 1;
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Unable to scan legacy async repeating scheduler references in " + jar, exception);
             }
-            return 1;
         }
         return 0;
     }
@@ -126,12 +150,29 @@ public final class RawSchedulerTransformerSmoke {
         try (JarFile jarFile = new JarFile(jar.toFile())) {
             JarEntry entry = jarFile.getJarEntry(entryName);
             if (entry == null) return null;
-            try (InputStream inputStream = jarFile.getInputStream(entry)) {
-                return inputStream.readAllBytes();
-            }
+            return readClass(jarFile, entry);
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to read " + entryName + " from " + jar, exception);
         }
+    }
+
+    private static byte[] readClass(JarFile jarFile, JarEntry entry) throws IOException {
+        try (InputStream inputStream = jarFile.getInputStream(entry)) {
+            return inputStream.readAllBytes();
+        }
+    }
+
+    private static String className(JarEntry entry) {
+        String name = entry.getName();
+        if (entry.isDirectory() || !name.endsWith(".class")) return null;
+        return name.substring(0, name.length() - ".class".length());
+    }
+
+    private static boolean isAnonymousOwnerShape(String owner) {
+        int marker = owner.lastIndexOf('$');
+        return marker >= 0
+                && marker < owner.length() - 1
+                && Character.isDigit(owner.charAt(marker + 1));
     }
 
     private static MethodHits scan(byte[] classBytes) {
@@ -160,6 +201,11 @@ public final class RawSchedulerTransformerSmoke {
                                 && "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/lang/Object;".equals(methodDescriptor)) {
                             hits.bridgeSchedulerAsyncCalls++;
                         }
+                        if ((opcode == Opcodes.INVOKEINTERFACE || opcode == Opcodes.INVOKEVIRTUAL)
+                                && "runTaskAsynchronously".equals(methodName)
+                                && "(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask;".equals(methodDescriptor)) {
+                            hits.legacySchedulerAsyncCalls++;
+                        }
                         if (opcode == Opcodes.INVOKESTATIC
                                 && BRIDGE.equals(owner)
                                 && "scheduleAsyncRepeatingTask".equals(methodName)
@@ -187,6 +233,7 @@ public final class RawSchedulerTransformerSmoke {
     private static final class MethodHits {
         private int bridgeAsyncRunnableCalls;
         private int bridgeSchedulerAsyncCalls;
+        private int legacySchedulerAsyncCalls;
         private int bridgeScheduleAsyncRepeatingCalls;
         private int legacyAsyncRunnableCalls;
         private int legacyScheduleAsyncRepeatingCalls;

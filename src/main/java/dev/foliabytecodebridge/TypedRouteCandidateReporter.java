@@ -5,11 +5,11 @@ import java.io.InputStream;
 /**
  * Read-only bytecode inventory before the Byte Buddy typed substitution pass.
  *
- * <p>This deliberately does not decide whether a class is transformed. It gives
- * us a cheap owner/name/descriptor snapshot before Byte Buddy resolves generic
- * and type-use metadata, which is where unrelated event/helper classes can
- * produce noisy inspection errors. The typed transform is still attempted so an
- * unknown-but-legitimate route shape is not hidden by a premature skip.</p>
+ * <p>This deliberately decides only the typed Byte Buddy pass. Raw ASM
+ * transformers still see every class first, but the typed substitution pass is
+ * skipped when the class has no registered route fingerprint. That keeps
+ * unrelated helper/event classes with unusual type-use metadata out of Byte
+ * Buddy's validation path without hiding direct bytecode route evidence.</p>
  */
 final class TypedRouteCandidateReporter {
 
@@ -69,6 +69,14 @@ final class TypedRouteCandidateReporter {
 
         String marker() {
             return MARKER;
+        }
+
+        boolean routeCandidate() {
+            return "ROUTE_CANDIDATE".equals(category);
+        }
+
+        boolean scanUnknown() {
+            return "SCAN_UNKNOWN".equals(category);
         }
     }
 }

@@ -76,7 +76,16 @@ It intentionally does not safety-translate:
 - arbitrary executor or thread calls
 - plugin-specific scheduler wrappers unless they eventually call Bukkit scheduler methods
 
-Selected direct `Player`, `Entity`, `World`, and `Block` calls are probed for logs, but the wrappers still pass through to the original Bukkit API.
+Selected direct `Player`, `Entity`, `World`, `Block`, scoreboard, and command
+calls now have exact route rules or diagnostic wrappers. Some are real rewrites,
+some are shim/model routes, and some remain trace-only. `RouteRuleRegistry` is
+the source of truth for exact owner/name/descriptor routes; intentionally
+ownerless helper shapes stay documented as generic model policies.
+
+Runtime model evidence is also mapped back to `RouteRuleRegistry` when the
+short API label matches a known owner/method/signature. This keeps live
+`[FBB model]` lines aligned with the same architecture map as bytecode
+transformers without adding duplicate route definitions.
 
 ## Runtime Policy
 
@@ -108,6 +117,51 @@ When a new bytecode shape is discovered, first map it to one of these families.
 Only add a new family when the smoke evidence shows an operation cannot be
 honestly grouped into the existing architecture.
 
+## NMS Compatibility Families
+
+Server-internal/NMS failures use a parallel map named `NmsCompatFamily`, not
+`RouteFamily`. This keeps Bukkit ownership routes separate from binary
+server-shape adapters.
+
+| NMS family | Meaning |
+| --- | --- |
+| `NMS_VERSION_COMPAT` | missing or renamed server-internal fields, methods, or classes |
+| `SERVER_TICK_COUNTER` | synthetic `MinecraftServer.currentTick:I` compatibility |
+| `NMS_EXECUTOR_CONTEXT` | server/chunk executor paths that may require regionized world data |
+| `NMS_CHUNK_ACCESS` | server-internal chunk/world access that needs an owner context |
+| `NMS_TICK_STATE` | server-internal tick state assumptions |
+| `NMS_UNSUPPORTED` | detected NMS shape without a compatibility contract yet |
+
+The current server-executor shim still uses the global scheduler as a bridge,
+but it now logs `NMS_EXECUTOR_CONTEXT` when runtime evidence shows the runnable
+expected regionized world/chunk state. That evidence means "derive an owner
+context before promoting this route," not "pretend this is just `S_GLOBAL`."
+
+Unknown NMS paths use the NMS compatibility model:
+
+```text
+unknown/server-internal NMS shape
+-> NmsCompatibilityContext
+-> owner-preserving NMS compatibility lane
+-> NmsOwnerExtractor scans for Location/Chunk/Entity/ServerLevel+BlockPos clues
+-> captured ServerLevel/Bukkit World + two local ints may become a chunk owner
+-> owner found: route-exit to the matching Folia owner before running
+-> owner missing: stay serialized on the current executor shim and preserve failures
+```
+
+The NMS lane is not the same thread as the plugin-event compatibility lane. It
+serializes with a lock while preserving the Folia owner thread that the runnable
+is already scheduled on. This matters because moving NMS internals to a random
+single thread can preserve ordering while still losing Folia's current
+regionized world context.
+
+For executor lambdas, `NmsOwnerExtractor` may promote a captured world plus two
+integer fields only when those clues live on the same runnable object. This is a
+generic bytecode-shape rule for server-internal chunk work, not a plugin-specific
+branch. If the extractor sees a world but cannot find coordinates, it leaves the
+path as `no-owner-contract` and records the candidate clue trail for the next
+pass.
+
 ## Task Handles
 
 Folia scheduler methods do not return Bukkit task ids. `BridgeBukkitTask` wraps Folia scheduled task handles and provides synthetic ids starting at `1_000_000`.
@@ -127,14 +181,18 @@ This project is a compatibility experiment, not a formal proof of Folia safety.
 
 ## Extension Points
 
-Add new rewrites in `FoliaBytecodeBridgeAgent` only when the bytecode shape is stable and the runtime behavior can be represented by a method in `SchedulerBridge`.
+Add new rewrites in `FoliaBytecodeBridgeAgent` only when the bytecode shape is
+stable and the runtime behavior can be represented by a bridge helper such as
+`SchedulerBridge`, `UnsafeCallBridge`, `ServerExecutorBridge`, or
+`SyntheticEventDispatchBridge`.
 
-Keep runtime behavior in `SchedulerBridge`. Do not put scheduling policy in the agent; the agent should only substitute calls.
+Keep runtime behavior in bridge helpers. Do not put scheduling policy in the
+agent; the agent should only substitute calls.
 
 When adding a rewrite:
 
 1. Add the `MemberSubstitution` entry.
-2. Add the exact replacement method signature to `SchedulerBridge`.
+2. Add the exact replacement method signature to the appropriate bridge helper.
 3. Document the call in `README.md`.
 4. Map diagnostics through `RouteFamily` and add a smoke assertion for the emitted route label.
 5. Add a note here if the rewrite has unusual behavior.

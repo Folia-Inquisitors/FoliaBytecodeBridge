@@ -28,7 +28,14 @@ public final class SchedulerBridge {
     private SchedulerBridge() {
     }
 
-    static void setLogger(Logger logger) {
+    /**
+     * Public bootstrap boundary.
+     *
+     * <p>The plugin main class may be loaded by Bukkit's plugin classloader while
+     * helper classes are visible from the Java-agent helper jar. Public access is
+     * intentional here so startup logging survives that classloader split.</p>
+     */
+    public static void setLogger(Logger logger) {
         BridgeDiagnostics.setLogger(logger);
     }
 

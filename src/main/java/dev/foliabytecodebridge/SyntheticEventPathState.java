@@ -51,7 +51,7 @@ final class SyntheticEventPathState {
 
     SyntheticEventPathState serialized(String missReason) {
         return new SyntheticEventPathState(eventName, listenerCount, shared,
-                "none", "owner-missed", "none", "none",
+                "none", "no-owner-contract", "none", "none",
                 "serialized-compatibility-lane", missReason, false);
     }
 
@@ -66,6 +66,50 @@ final class SyntheticEventPathState {
                 + " laneStatus=" + safe(laneStatus)
                 + " routeExit=" + routeExit
                 + " missReason=" + safe(missReason);
+    }
+
+    String eventName() {
+        return eventName;
+    }
+
+    int listenerCount() {
+        return listenerCount;
+    }
+
+    boolean shared() {
+        return shared;
+    }
+
+    RouteFamily routeFamily() {
+        try {
+            return "none".equals(route) ? null : RouteFamily.valueOf(route);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    String ownerStatus() {
+        return ownerStatus;
+    }
+
+    String ownerMethod() {
+        return ownerMethod;
+    }
+
+    String ownerType() {
+        return ownerType;
+    }
+
+    String laneStatus() {
+        return laneStatus;
+    }
+
+    String missReason() {
+        return missReason;
+    }
+
+    boolean routeExit() {
+        return routeExit;
     }
 
     private static String safe(String value) {

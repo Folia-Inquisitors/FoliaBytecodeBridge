@@ -14,6 +14,7 @@ public final class FoliaBytecodeBridgePlugin extends JavaPlugin {
     public void onLoad() {
         SchedulerBridge.setLogger(getLogger());
         BridgeDiagnostics.setLogger(getLogger());
+        BridgePluginResolver.publishPlugin(this, "plugin-onLoad");
         UnsafeCallBridge.setBridgePlugin(this);
         BridgeDiagnostics.buildMarker("onLoad", getDescription().getVersion(), getFile());
         SelfAttachInstaller.installFromPlugin(this, getFile());
@@ -23,11 +24,11 @@ public final class FoliaBytecodeBridgePlugin extends JavaPlugin {
     public void onEnable() {
         SchedulerBridge.setLogger(getLogger());
         BridgeDiagnostics.setLogger(getLogger());
+        BridgePluginResolver.publishPlugin(this, "plugin-onEnable");
         UnsafeCallBridge.setBridgePlugin(this);
         BridgeDiagnostics.buildMarker("onEnable", getDescription().getVersion(), getFile());
         installCompatibilityLogHandler();
-        if (FoliaBytecodeBridgeAgent.isInstalled()
-                || Boolean.parseBoolean(System.getProperty("foliabytecodebridge.agentInstalled", "false"))) {
+        if (agentInstalled()) {
             String mode = System.getProperty("foliabytecodebridge.agentMode", "unknown");
             getLogger().info("Bytecode transformer is installed. mode=" + mode);
             return;
@@ -63,5 +64,13 @@ public final class FoliaBytecodeBridgePlugin extends JavaPlugin {
             }
         };
         Logger.getLogger("").addHandler(compatibilityHandler);
+    }
+
+    private boolean agentInstalled() {
+        // Do not link FoliaBytecodeBridgeAgent from the Bukkit plugin class.
+        // The agent imports Byte Buddy and can be resolved through the helper
+        // runtime loader during startup; the agent install path publishes this
+        // lightweight property for plugin-side status checks.
+        return Boolean.parseBoolean(System.getProperty("foliabytecodebridge.agentInstalled", "false"));
     }
 }

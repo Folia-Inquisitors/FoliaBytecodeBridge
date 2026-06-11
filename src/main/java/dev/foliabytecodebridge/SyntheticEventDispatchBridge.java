@@ -4,9 +4,12 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.event.Cancellable;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventException;
+import org.bukkit.event.Listener;
+import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredListener;
@@ -29,13 +32,122 @@ import java.util.function.Consumer;
  */
 public final class SyntheticEventDispatchBridge {
 
+    private static final Object LISTENER_BOUNDARY_LOCK = new Object();
+
     private SyntheticEventDispatchBridge() {
+    }
+
+    public static void callRegisteredListener(RegisteredListener registeredListener, Event event)
+            throws EventException {
+        if (!BridgeConfig.syntheticListenerBoundary()) {
+            executeRegisteredListenerDirect(registeredListener, event);
+            return;
+        }
+        if (registeredListener == null || event == null) {
+            BridgeDiagnostics.syntheticListenerBoundary("invalid", eventName(event), "unknown-listener",
+                    0, null, "none",
+                    "result=contract-missing reason=null-registered-listener-or-event");
+            return;
+        }
+        if (event instanceof Cancellable cancellable
+                && cancellable.isCancelled()
+                && registeredListener.isIgnoringCancelled()) {
+            return;
+        }
+
+        String eventName = event.getClass().getName();
+        String listenerOwner = listenerOwner(registeredListener);
+        int listenerCount = registeredListenerCount(event);
+
+        if (event.isAsynchronous()) {
+            BridgeDiagnostics.syntheticListenerBoundary("pass-through", eventName, listenerOwner,
+                    listenerCount, null, "none",
+                    "result=original reason=async-event");
+            executeRegisteredListenerDirect(registeredListener, event);
+            return;
+        }
+
+        if (CompatibilityContext.active()) {
+            // Custom plugin events routed through callEvent(Event) already own
+            // the synthetic context. Keep listener execution inline so the
+            // wrapper does not recursively re-enter the same model.
+            BridgeDiagnostics.syntheticListenerBoundary("inline-existing-context", eventName, listenerOwner,
+                    listenerCount, null, "existing-context",
+                    "result=dispatching reason=already-in-synthetic-event-path");
+            executeRegisteredListenerObserved(registeredListener, event, null, "existing-context",
+                    "existing-context");
+            return;
+        }
+
+        SyntheticEventOwnerExtractor.OwnerScan ownerScan = SyntheticEventOwnerExtractor.scan(event);
+        RouteFamily routeFamily = ownerScan.entityOwner() != null
+                ? RouteFamily.A_ENTITY
+                : ownerScan.blockOwner() != null
+                ? RouteFamily.C_REGION_BLOCK
+                : ownerScan.locationOwner() != null
+                ? RouteFamily.B_REGION_LOCATION
+                : null;
+        String ownerMethod = ownerMethod(ownerScan);
+        String reason = "synthetic-listener-boundary-server-fired-event";
+        if (routeFamily == null) {
+            BridgeDiagnostics.syntheticEventOwnerMiss(eventName, listenerCount, ownerScan,
+                    "result=stay-serialized source=registered-listener-boundary");
+        } else {
+            BridgeDiagnostics.syntheticListenerBoundary("owner-found", eventName, listenerOwner,
+                    listenerCount, routeFamily, ownerMethod,
+                    "result=owner-contract source=registered-listener-boundary");
+        }
+
+        EventException[] failure = new EventException[1];
+        Runnable dispatch = () -> {
+            try {
+                executeRegisteredListenerObserved(registeredListener, event, routeFamily, ownerMethod,
+                        CompatibilityLane.active() ? "single-thread-compatibility-lane" : "listener-boundary-lock");
+            } catch (EventException exception) {
+                failure[0] = exception;
+            }
+        };
+
+        if (CompatibilityLane.active()) {
+            dispatch.run();
+        } else if (isLikelyFoliaOwnerThread()) {
+            // Do not move a region/entity-owned callback onto the lane thread:
+            // known route exits inside the listener may need the current owner
+            // to keep ticking. The lock still serializes unknown listener logic
+            // across callbacks while preserving the owner thread.
+            synchronized (LISTENER_BOUNDARY_LOCK) {
+                try (CompatibilityContext.Scope ignored = CompatibilityContext.enterSyntheticEventPath(
+                        eventName, listenerCount > 1, listenerCount, reason + " mode=owner-thread-lock")) {
+                    BridgeDiagnostics.syntheticListenerBoundary("lock-start", eventName, listenerOwner,
+                            listenerCount, routeFamily, ownerMethod,
+                            "result=dispatching lane=listener-boundary-lock next=preserve-current-owner-thread");
+                    dispatch.run();
+                    BridgeDiagnostics.syntheticListenerBoundary("lock-finish", eventName, listenerOwner,
+                            listenerCount, routeFamily, ownerMethod,
+                            "result=completed lane=listener-boundary-lock");
+                }
+            }
+        } else {
+            try {
+                SyntheticEventPathBridge.run(eventName, listenerCount > 1, listenerCount, reason, dispatch);
+            } catch (RuntimeException exception) {
+                EventException unwrapped = unwrapEventException(exception);
+                if (unwrapped != null) {
+                    throw unwrapped;
+                }
+                throw exception;
+            }
+        }
+
+        if (failure[0] != null) {
+            throw failure[0];
+        }
     }
 
     public static void callEvent(PluginManager pluginManager, Event event) {
         if (pluginManager == null || event == null) {
             BridgeDiagnostics.syntheticEventDispatch("invalid", eventName(event), 0,
-                    "result=blocked reason=null-plugin-manager-or-event");
+                    "result=contract-missing reason=null-plugin-manager-or-event");
             return;
         }
 
@@ -147,6 +259,11 @@ public final class SyntheticEventDispatchBridge {
             // scheduler failures.
             future.get(5L, TimeUnit.SECONDS);
         } catch (Throwable throwable) {
+            if (isBridgeOrServerStopping()) {
+                BridgeDiagnostics.syntheticEventRouteExitAbandoned(eventName, RouteFamily.A_ENTITY,
+                        entityOwner.methodName(), ownerType, throwable);
+                return;
+            }
             BridgeDiagnostics.syntheticEventRouteExitFailure(eventName, RouteFamily.A_ENTITY,
                     entityOwner.methodName(), ownerType, throwable);
         }
@@ -218,6 +335,11 @@ public final class SyntheticEventDispatchBridge {
             // briefly for the owner route and report failures as route evidence.
             future.get(5L, TimeUnit.SECONDS);
         } catch (Throwable throwable) {
+            if (isBridgeOrServerStopping()) {
+                BridgeDiagnostics.syntheticEventRouteExitAbandoned(eventName, routeFamily,
+                        ownerMethod, ownerType, throwable);
+                return;
+            }
             BridgeDiagnostics.syntheticEventRouteExitFailure(eventName, routeFamily,
                     ownerMethod, ownerType, throwable);
         }
@@ -289,6 +411,73 @@ public final class SyntheticEventDispatchBridge {
         }
     }
 
+    private static void executeRegisteredListenerObserved(RegisteredListener registeredListener, Event event,
+                                                          RouteFamily routeFamily, String ownerMethod,
+                                                          String path) throws EventException {
+        String eventName = eventName(event);
+        String owner = listenerOwner(registeredListener);
+        BridgeDiagnostics.syntheticListenerBoundary("listener-start", eventName, owner,
+                registeredListenerCount(event), routeFamily, ownerMethod,
+                "result=dispatching path=" + path);
+        SyntheticEventPathBridge.observeListener(eventName, owner, "DISPATCH",
+                "registered-listener-boundary", cancellationState(event));
+        try (SyntheticListenerConcurrencyTracker.Invocation ignored =
+                     SyntheticListenerConcurrencyTracker.enter(eventName, owner, routeFamily, ownerMethod, path)) {
+            executeRegisteredListenerDirect(registeredListener, event);
+        } catch (EventException exception) {
+            BridgeDiagnostics.syntheticEventDispatchFailure(eventName, owner, exception);
+            throw exception;
+        } catch (RuntimeException exception) {
+            BridgeDiagnostics.syntheticEventDispatchFailure(eventName, owner, exception);
+            throw exception;
+        } finally {
+            BridgeDiagnostics.syntheticListenerBoundary("listener-finish", eventName, owner,
+                    registeredListenerCount(event), routeFamily, ownerMethod,
+                    "result=completed path=" + path);
+        }
+    }
+
+    private static void executeRegisteredListenerDirect(RegisteredListener registeredListener, Event event)
+            throws EventException {
+        if (registeredListener == null || event == null) return;
+        EventExecutor executor = registeredListener.getExecutor();
+        Listener listener = registeredListener.getListener();
+        executor.execute(listener, event);
+    }
+
+    private static EventException unwrapEventException(Throwable throwable) {
+        for (Throwable current = throwable; current != null; current = current.getCause()) {
+            if (current instanceof EventException eventException) {
+                return eventException;
+            }
+        }
+        return null;
+    }
+
+    private static String ownerMethod(SyntheticEventOwnerExtractor.OwnerScan ownerScan) {
+        if (ownerScan == null) return "none";
+        if (ownerScan.entityOwner() != null) return ownerScan.entityOwner().methodName();
+        if (ownerScan.blockOwner() != null) return ownerScan.blockOwner().methodName();
+        if (ownerScan.locationOwner() != null) return ownerScan.locationOwner().methodName();
+        return "none";
+    }
+
+    private static int registeredListenerCount(Event event) {
+        if (event == null) return 0;
+        try {
+            return event.getHandlers().getRegisteredListeners().length;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static boolean isLikelyFoliaOwnerThread() {
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("Folia Region Scheduler Thread")
+                || threadName.contains("Folia Entity Scheduler Thread")
+                || threadName.contains("Server thread");
+    }
+
     private static boolean shouldPassThrough(Event event) {
         if (event.isAsynchronous()) return true;
         String name = event.getClass().getName();
@@ -356,12 +545,29 @@ public final class SyntheticEventDispatchBridge {
     }
 
     private static Plugin bridgePlugin() {
+        return BridgePluginResolver.requirePlugin("synthetic event route exit");
+    }
+
+    private static boolean isBridgeOrServerStopping() {
         try {
             Plugin plugin = Bukkit.getPluginManager().getPlugin("FoliaBytecodeBridge");
-            if (plugin != null) return plugin;
+            if (plugin != null && !plugin.isEnabled()) {
+                return true;
+            }
         } catch (Throwable ignored) {
         }
-        throw new IllegalStateException("FoliaBytecodeBridge plugin is not enabled for synthetic event route exit");
+        try {
+            Object server = Bukkit.getServer();
+            Method method = server.getClass().getMethod("isStopping");
+            Object result = method.invoke(server);
+            if (Boolean.TRUE.equals(result)) {
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("RegionShutdownThread")
+                || threadName.contains("Region shutdown thread");
     }
 
     private static String entityType(Entity entity) {

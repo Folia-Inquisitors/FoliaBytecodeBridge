@@ -12,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -86,6 +87,10 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
 
     protected String defaultFirstJoinModes() {
         return DEFAULT_FIRST_JOIN_MODES;
+    }
+
+    protected String defaultStartupModes() {
+        return DEFAULT_STARTUP_MODES;
     }
 
     protected String firstJoinPropertyName() {
@@ -500,12 +505,14 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
 
     private void runStartupModesInContexts(String trigger, String contexts, String modes) {
         for (String context : contexts.split(",")) {
+            if (probeStopping("startup-contexts", context.trim().toLowerCase(Locale.ROOT), modes, trigger)) return;
             runStartupModesInContext(context.trim().toLowerCase(Locale.ROOT), modes, trigger);
         }
     }
 
     private void runStartupModesInContext(String context, String modes, String trigger) {
         if (context.isBlank() || "off".equals(context)) return;
+        if (probeStopping("startup-context", context, modes, trigger)) return;
         Runnable task = () -> runStartupModes(modes, trigger, context);
         try {
             switch (context) {
@@ -543,12 +550,14 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
 
     private void runStartupModes(String modes, String trigger, String context) {
         for (String mode : modes.split(",")) {
+            if (probeStopping("startup-mode-list", context, modes, trigger)) return;
             runStartupMode(mode.trim().toLowerCase(Locale.ROOT), trigger, context);
         }
     }
 
     private void runStartupMode(String mode, String trigger, String context) {
         if (mode.isBlank() || "off".equals(mode)) return;
+        if (probeStopping("startup-mode", context, mode, trigger)) return;
         activeProbeMode.set(mode);
         activeProbeContext.set(context);
         probeInfo("[FBB probe] begin root=/" + rootCommand()
@@ -621,6 +630,15 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
             String detail = call.run();
             probeInfo(prefix + " result=completed" + (detail == null || detail.isBlank() ? "" : " " + detail));
         } catch (Throwable throwable) {
+            if (isProbeStopping()) {
+                probeWarning(prefix
+                        + " result=abandoned classification=server-stopping"
+                        + " action=skip-shutdown-fingerprint"
+                        + " throwable=" + throwable.getClass().getName()
+                        + ": " + throwable.getMessage()
+                        + controlEvidence());
+                return;
+            }
             probeLog(Level.WARNING,
                     prefix + " result=failed throwable="
                             + throwable.getClass().getName() + ": " + throwable.getMessage()
@@ -640,11 +658,21 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     }
 
     private void probe(ProbePath path, ProbeCall call) {
+        if (probeStopping("probe-call", path.context(), path.mode(), "active-probe")) return;
         probeInfo("[FBB probe] " + path.format() + " action=invoke");
         try {
             call.run();
             probeInfo("[FBB probe] " + path.format() + " result=completed");
         } catch (Throwable throwable) {
+            if (isProbeStopping()) {
+                probeWarning("[FBB probe] " + path.format()
+                        + " result=abandoned classification=server-stopping"
+                        + " action=skip-shutdown-fingerprint"
+                        + " throwable=" + throwable.getClass().getName()
+                        + ": " + throwable.getMessage()
+                        + controlEvidence());
+                return;
+            }
             String failure = failureFingerprint(throwable);
             String action = unsupportedOperation(throwable)
                     ? unsupportedAction()
@@ -667,6 +695,34 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     private String controlEvidence() {
         if (!controlBaseline()) return "";
         return " controlExpected=true controlPurpose=raw-folia-baseline";
+    }
+
+    private boolean probeStopping(String stage, String context, String mode, String trigger) {
+        if (!isProbeStopping()) return false;
+        probeWarning("[FBB probe] root=/" + rootCommand()
+                + " bridgeRole=" + bridgeRole()
+                + " context=" + context
+                + " mode=" + mode
+                + " trigger=" + trigger
+                + " route=S_GLOBAL api=probe-lifecycle owner=FBBProbe name=" + stage
+                + " descriptor=()V result=abandoned classification=server-stopping"
+                + " action=skip-remaining-probe-work");
+        return true;
+    }
+
+    private boolean isProbeStopping() {
+        if (!isEnabled()) return true;
+        try {
+            Object server = Bukkit.getServer();
+            Method method = server.getClass().getMethod("isStopping");
+            Object result = method.invoke(server);
+            if (Boolean.TRUE.equals(result)) return true;
+        } catch (Throwable ignored) {
+            // Keep compatibility with Bukkit API shapes that do not expose isStopping.
+        }
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("RegionShutdownThread")
+                || threadName.contains("Region shutdown thread");
     }
 
     private void logContextRetired(Player player, String context, String modes, String trigger) {
@@ -809,7 +865,7 @@ public abstract class AbstractFbbProbePlugin extends JavaPlugin implements Liste
     }
 
     private String startupModes() {
-        return normalizedCsv(System.getProperty(startupModesPropertyName(), DEFAULT_STARTUP_MODES).trim());
+        return normalizedCsv(System.getProperty(startupModesPropertyName(), defaultStartupModes()).trim());
     }
 
     private String startupContexts() {

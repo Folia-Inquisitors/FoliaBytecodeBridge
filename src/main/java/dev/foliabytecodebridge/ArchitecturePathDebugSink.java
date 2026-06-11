@@ -20,15 +20,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 
 /**
- * Full-fidelity diagnostics file for the experimental bridge.
+ * Focused architecture-pathfinding timeline.
  *
- * <p>The console is allowed to stay readable; this file is the noisy lab
- * notebook. Every bridge route decision should be written here before any
- * console filtering is applied.</p>
+ * <p>{@link DebugFileSink} is the full lab notebook. This sink is the readable
+ * companion file for "how did FBB think about this path?" It records route
+ * discovery, owner/lane/synthetic decisions, rewrite outcomes, and failure
+ * direction without requiring console spam.</p>
  */
-final class DebugFileSink {
-    private static final String JVM_LOCK_KEY = "dev.foliabytecodebridge.debugFileLock";
-    private static final int QUEUE_CAPACITY = 16384;
+final class ArchitecturePathDebugSink {
+    private static final String JVM_LOCK_KEY = "dev.foliabytecodebridge.architecturePathLock";
+    private static final int QUEUE_CAPACITY = 8192;
     private static final int WRITE_ATTEMPTS = 5;
     private static final long RETRY_DELAY_MILLIS = 25L;
     private static final DateTimeFormatter ARCHIVE_TIMESTAMP =
@@ -40,27 +41,30 @@ final class DebugFileSink {
     private static final AtomicBoolean WRITER_STARTED = new AtomicBoolean();
     private static final AtomicLong DROPPED_RECORDS = new AtomicLong();
 
-    private DebugFileSink() {
+    private ArchitecturePathDebugSink() {
     }
 
-    static void write(Level level, String message, Throwable throwable) {
-        if (!BridgeConfig.debugFile()) return;
+    static void write(Level level, String stage, String message, Throwable throwable) {
+        if (!BridgeConfig.architecturePathfindingDebug()) return;
 
         startWriter();
 
         List<String> lines = new ArrayList<>(throwable == null ? 1 : 2);
-        lines.add(OffsetDateTime.now() + " [" + level.getName() + "] " + PrivacySanitizer.text(message));
-        if (throwable != null) {
+        lines.add(OffsetDateTime.now()
+                + " [" + level.getName() + "]"
+                + " stage=" + safe(stage)
+                + " " + PrivacySanitizer.text(message));
+        if (throwable != null && level.intValue() >= Level.WARNING.intValue()) {
             lines.add(PrivacySanitizer.text(stackTrace(throwable)));
         }
 
-        // The debug file is intentionally noisy, but Folia owner threads should
-        // never block on that noise. Backpressure is recorded and diagnostics
-        // are dropped before server execution is allowed to stall.
+        // Folia owner threads must never wait on diagnostic file I/O. If the
+        // evidence firehose overwhelms this queue, we drop pathfinding records
+        // and preserve that fact instead of stalling a region thread.
         if (!QUEUE.offer(new WriteRecord(lines))) {
             long dropped = DROPPED_RECORDS.incrementAndGet();
             if (QUEUE_WARNING_PRINTED.compareAndSet(false, true)) {
-                System.err.println("[FoliaBytecodeBridge] Debug file queue is full; "
+                System.err.println("[FoliaBytecodeBridge] Architecture pathfinding queue is full; "
                         + "dropping diagnostic records instead of blocking Folia owner threads"
                         + " dropped=" + dropped
                         + " (further queue warnings suppressed)");
@@ -71,13 +75,13 @@ final class DebugFileSink {
     private static void startWriter() {
         if (!WRITER_STARTED.compareAndSet(false, true)) return;
 
-        Thread writer = new Thread(DebugFileSink::writerLoop, "FBB-debug-file-writer");
+        Thread writer = new Thread(ArchitecturePathDebugSink::writerLoop, "FBB-architecture-path-writer");
         writer.setDaemon(true);
         writer.start();
     }
 
     private static void writerLoop() {
-        List<WriteRecord> batch = new ArrayList<>(512);
+        List<WriteRecord> batch = new ArrayList<>(256);
         while (true) {
             try {
                 WriteRecord first = QUEUE.poll(1L, TimeUnit.SECONDS);
@@ -87,7 +91,7 @@ final class DebugFileSink {
                 }
 
                 batch.add(first);
-                QUEUE.drainTo(batch, 511);
+                QUEUE.drainTo(batch, 255);
                 flushDroppedSummary();
                 for (WriteRecord record : batch) {
                     writeNow(record);
@@ -104,16 +108,16 @@ final class DebugFileSink {
         long dropped = DROPPED_RECORDS.getAndSet(0L);
         if (dropped <= 0L) return;
         writeNow(new WriteRecord(List.of(OffsetDateTime.now()
-                + " [WARNING] [FBB diagnostics]"
-                + " marker=FBB_DEBUG_FILE_BACKPRESSURE_V1"
+                + " [WARNING] stage=diagnostics/backpressure"
+                + " marker=FBB_ARCH_DIAGNOSTIC_BACKPRESSURE_V1"
                 + " result=dropped-records"
                 + " dropped=" + dropped
-                + " reason=debug-file-queue-full"
+                + " reason=architecture-pathfinding-queue-full"
                 + " action=preserve-server-thread-over-diagnostic-completeness")));
     }
 
     private static void writeNow(WriteRecord record) {
-        Path path = Path.of(BridgeConfig.debugFilePath());
+        Path path = Path.of(BridgeConfig.architecturePathfindingDebugPath());
         synchronized (jvmLock()) {
             try {
                 Path parent = path.getParent();
@@ -129,43 +133,40 @@ final class DebugFileSink {
                 }
             } catch (IOException exception) {
                 if (WRITE_WARNING_PRINTED.compareAndSet(false, true)) {
-                    System.err.println("[FoliaBytecodeBridge] Could not write debug file "
+                    System.err.println("[FoliaBytecodeBridge] Could not write architecture pathfinding file "
                             + PrivacySanitizer.text(path.toString()) + ": " + exception.getMessage()
-                            + " (further debug-file write warnings suppressed)");
+                            + " (further architecture-pathfinding write warnings suppressed)");
                 }
             }
         }
     }
 
     private static String sessionHeader() {
-        return "==== FoliaBytecodeBridge debug session "
+        return "==== FoliaBytecodeBridge architecture pathfinding session "
                 + OffsetDateTime.now()
                 + " version=" + BridgeBuildInfo.VERSION
                 + " buildId=" + BridgeBuildInfo.BUILD_ID
                 + " routeRules=" + RouteRuleRegistry.rules().size()
+                + " filePurpose=route-thinking-timeline"
                 + " ====";
     }
 
     private static void rotateIfNeeded(Path path) throws IOException {
-        long maxBytes = BridgeConfig.debugFileMaxBytes();
+        long maxBytes = BridgeConfig.architecturePathfindingDebugMaxBytes();
         if (maxBytes <= 0L || !Files.isRegularFile(path) || Files.size(path) < maxBytes) return;
 
-        Path archive = archivePath(path);
-        Files.move(path, archive, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(path, archivePath(path), StandardCopyOption.REPLACE_EXISTING);
         HEADER_WRITTEN.set(false);
     }
 
     private static Path archivePath(Path path) {
         Path fileName = path.getFileName();
-        String name = fileName == null ? "debug.log" : fileName.toString();
+        String name = fileName == null ? "architecture-pathfinding.debug" : fileName.toString();
         String timestamp = OffsetDateTime.now().format(ARCHIVE_TIMESTAMP);
         int dot = name.lastIndexOf('.');
-        String archivedName;
-        if (dot <= 0) {
-            archivedName = name + "-" + timestamp;
-        } else {
-            archivedName = name.substring(0, dot) + "-" + timestamp + name.substring(dot);
-        }
+        String archivedName = dot <= 0
+                ? name + "-" + timestamp
+                : name.substring(0, dot) + "-" + timestamp + name.substring(dot);
         Path parent = path.getParent();
         return parent == null ? Path.of(archivedName) : parent.resolve(archivedName);
     }
@@ -208,6 +209,11 @@ final class DebugFileSink {
         StringWriter writer = new StringWriter();
         throwable.printStackTrace(new PrintWriter(writer));
         return writer.toString();
+    }
+
+    private static String safe(String value) {
+        if (value == null || value.isBlank()) return "unknown";
+        return PrivacySanitizer.text(value.replace('\n', ' ').replace('\r', ' '));
     }
 
     private static final class WriteRecord {

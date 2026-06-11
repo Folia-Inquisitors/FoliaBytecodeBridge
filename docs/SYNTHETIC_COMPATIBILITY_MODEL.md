@@ -28,6 +28,12 @@ inside the model when unknown behavior or shared event ordering cannot be
 proven safe. Any Bukkit/world/entity access that appears inside the lane must
 still exit through a known route family before it is treated as Folia-safe.
 
+The synthetic model is a runtime execution layer, not a class-file inspection
+layer. Transformer targeting decisions, such as skipping typed Byte Buddy work
+for classes with no registered route fingerprint, happen before plugin logic
+runs. Those skips preserve raw bytecode routing and avoid touching unrelated
+class metadata; they are not handled by the single-thread compatibility lane.
+
 ## Intended Flow
 
 ```text
@@ -62,11 +68,26 @@ The first rewrite target is the exact bytecode shape:
 org.bukkit.plugin.PluginManager#callEvent(Lorg/bukkit/event/Event;)V
 ```
 
-`SyntheticEventDispatchBridge` keeps built-in Bukkit/Paper events as
-pass-through because those event contracts can include server-side behavior
-outside the visible listener list. Custom non-async plugin events enter the
-single-thread compatibility lane and dispatch the registered listener list in
-order. That is the first concrete version of the shared-event model.
+`SyntheticEventDispatchBridge` originally modeled only custom non-async plugin
+events at this call site. Those events enter the single-thread compatibility
+lane and dispatch the registered listener list in order.
+
+Built-in Bukkit/Paper events usually do not start from plugin bytecode calling
+`PluginManager#callEvent(Event)`. They are fired by the server and enter plugin
+code through:
+
+```text
+org.bukkit.plugin.RegisteredListener#callEvent(Lorg/bukkit/event/Event;)V
+```
+
+FBB now has a second narrow raw transformer for that listener boundary. It
+preserves Bukkit's cancelled-listener skip, records the event and listener
+owner, then runs the callback inside the synthetic compatibility model. When
+the callback is already on a likely Folia owner thread, FBB keeps execution on
+that owner thread and serializes with a listener-boundary lock. Moving the
+listener to the lane thread in that case can deadlock if a known route exit
+needs the current owner to keep ticking. When the callback is not on a likely
+owner thread, the existing single-thread compatibility lane is used.
 
 The implementation emits:
 
@@ -74,6 +95,7 @@ The implementation emits:
 - `[FBB compatibility-lane]`
 - `[FBB event-listener]`
 - `[FBB synthetic-event-dispatch]`
+- `[FBB synthetic-listener-boundary]`
 - `[FBB promotion-candidate]`
 - `[FBB synthetic-event-probe]`
 
@@ -81,6 +103,11 @@ The implementation emits:
 `failure` actions with a sequence number. The sequence proves ordering inside
 the serialized lane. It is deliberately labeled as a compatibility model, not a
 Folia owner route.
+
+`[FBB synthetic-listener-boundary]` reports built-in/server-fired listener
+callbacks that entered through `RegisteredListener#callEvent(Event)`. Search
+`marker=FBB_SYNTHETIC_LISTENER_BOUNDARY_V1` when comparing logs. `lane` values
+distinguish `single-thread-compatibility-lane` from `listener-boundary-lock`.
 
 ## Listener Route Exits
 
@@ -287,7 +314,7 @@ If a multi-owner event does not expose one of those markers, it remains
 serialized and the plan log says:
 
 ```text
-[FBB synthetic-multi-region] phase=plan-mutation result=blocked reason=no-explicit-mutation-intent
+[FBB synthetic-multi-region] phase=plan-mutation result=serialized-unproven reason=no-explicit-mutation-intent
 ```
 
 If the event explicitly says it is a mutation, the bridge records the intended
@@ -321,7 +348,7 @@ If mutation intent exists but those contract markers are missing, diagnostics
 stay blocked:
 
 ```text
-[FBB synthetic-multi-region] phase=contract-mutation result=blocked reason=missing-two-phase-contract
+[FBB synthetic-multi-region] phase=contract-mutation result=contract-missing reason=missing-two-phase-contract
 ```
 
 If all three markers are present, the bridge logs readiness only:
@@ -444,7 +471,7 @@ syntheticMutationExecutor=false
 When disabled, the bridge emits:
 
 ```text
-[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=executor-disabled action=stay-serialized
+[FBB synthetic-multi-region] phase=execute-mutation result=contract-disabled reason=executor-disabled action=stay-serialized
 ```
 
 When enabled on a live server, the executor prepares once, schedules one
@@ -473,13 +500,13 @@ Negative contract probes are part of this phase. A prepare hook returning false
 must log:
 
 ```text
-[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=prepare-returned-false
+[FBB synthetic-multi-region] phase=execute-mutation result=contract-rejected reason=prepare-returned-false
 ```
 
 A verify hook returning false after owner apply must log:
 
 ```text
-[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=verify-returned-false
+[FBB synthetic-multi-region] phase=execute-mutation result=contract-rejected reason=verify-returned-false
 ```
 
 These cases are just as important as the successful executor path because they
@@ -528,7 +555,7 @@ Useful evidence lines:
 ```text
 [FBB synthetic-event-state] action=scan-start route=none ownerStatus=scanning
 [FBB synthetic-event-state] action=route-exit route=A_ENTITY ownerStatus=owner-found
-[FBB synthetic-event-state] action=serialized route=none ownerStatus=owner-missed
+[FBB synthetic-event-state] action=serialized route=none ownerStatus=no-owner-contract
 [FBB synthetic-owner-miss] route=none routeFamily=UNKNOWN missReason=...
 ```
 
@@ -557,6 +584,16 @@ When a listener chain exits through a known owner route, the wrapper also emits:
 That line connects the shared event wrapper to the exact listener currently
 being dispatched inside the owner route. It is evidence that the listener path
 left the serialized wrapper only through a known owner family.
+
+During server shutdown, a queued synthetic owner route can be abandoned before
+Folia ticks the target owner. That prints:
+
+```text
+[FBB synthetic-event-route-exit] action=abandon classification=server-stopping
+```
+
+That line is lifecycle evidence. It does not mark the event safe and it should
+not be read as a normal route failure.
 
 ## Promotion Evidence
 

@@ -26,6 +26,12 @@ final class BridgeConfig {
             # file to debug-<timestamp>.log and starting a fresh debug.log.
             # Set to 0 to disable rotation. 5368709120 = 5 GiB.
             debugFileMaxBytes=5368709120
+            # Focused "how did the bridge think?" timeline. This is separate
+            # from debug.log so route-family/owner/lane decisions can be read
+            # without turning the console noisy.
+            architecturePathfindingDebug=true
+            architecturePathfindingDebugPath=plugins/FoliaBytecodeBridge/architecture-pathfinding.debug
+            architecturePathfindingDebugMaxBytes=5368709120
             consoleVerbose=false
 
             debug=false
@@ -44,6 +50,11 @@ final class BridgeConfig {
             # executor. It only runs for explicit contract-ready events with
             # exact prepare/apply/verify hooks. Leave false unless testing.
             syntheticMutationExecutor=false
+
+            # Experimental listener-boundary wrapper. This connects built-in
+            # server-fired Bukkit listener callbacks to the same synthetic
+            # compatibility model used for plugin-dispatched custom events.
+            syntheticListenerBoundary=true
             """;
     private static final Properties FILE_PROPERTIES = new Properties();
     private static volatile boolean loaded;
@@ -114,6 +125,19 @@ final class BridgeConfig {
         return decimal("debugFileMaxBytes", 5_368_709_120L);
     }
 
+    static boolean architecturePathfindingDebug() {
+        return bool("architecturePathfindingDebug", true);
+    }
+
+    static String architecturePathfindingDebugPath() {
+        return string("architecturePathfindingDebugPath",
+                "plugins/FoliaBytecodeBridge/architecture-pathfinding.debug");
+    }
+
+    static long architecturePathfindingDebugMaxBytes() {
+        return decimal("architecturePathfindingDebugMaxBytes", 5_368_709_120L);
+    }
+
     static boolean consoleVerbose() {
         return bool("consoleVerbose", false);
     }
@@ -164,6 +188,10 @@ final class BridgeConfig {
 
     static boolean syntheticMutationExecutor() {
         return bool("syntheticMutationExecutor", false);
+    }
+
+    static boolean syntheticListenerBoundary() {
+        return bool("syntheticListenerBoundary", true);
     }
 
     static boolean metadataOverlayAll() {

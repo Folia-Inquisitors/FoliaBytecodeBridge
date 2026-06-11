@@ -215,7 +215,7 @@ final class SyntheticEventOwnerExtractor {
                     OwnerScan scan = directOwnerScan(originalEvent, "delegate:" + name + ".",
                             misses, multiRegionObservations);
                     if (scan.hasOwner()) return scan;
-                    misses.add(new OwnerMiss("delegate", name, "original-event-owner-missed",
+                    misses.add(new OwnerMiss("delegate", name, "original-event-no-owner-contract",
                             "event=" + originalEvent.getClass().getName()));
                 } catch (ReflectiveOperationException | RuntimeException exception) {
                     misses.add(new OwnerMiss("delegate", name, "getter-failed",

@@ -58,7 +58,7 @@ final class SyntheticMultiRegionMutationExecutor {
         if (event == null || observation == null || observation.readOnly()) return;
         if (!enabled()) {
             BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                    "result=blocked reason=executor-disabled"
+                    "result=contract-disabled reason=executor-disabled"
                             + " marker=" + MARKER_EXECUTOR_DISABLED
                             + " mutationKind=" + safe(mutationKind)
                             + " enable=-Dfoliabytecodebridge.syntheticMutationExecutor=true"
@@ -69,7 +69,7 @@ final class SyntheticMultiRegionMutationExecutor {
         Hooks hooks = hooks(event);
         if (!hooks.ready()) {
             BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                    "result=blocked reason=missing-executor-hooks"
+                    "result=contract-missing reason=missing-executor-hooks"
                             + " marker=" + MARKER_MISSING_HOOKS
                             + " prepareHook=" + hookName(hooks.prepare())
                             + " applyHook=" + hookName(hooks.apply())
@@ -82,7 +82,7 @@ final class SyntheticMultiRegionMutationExecutor {
         List<Block> anchors = observation.ownerAnchors();
         if (anchors == null || anchors.isEmpty()) {
             BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                    "result=blocked reason=no-owner-anchors"
+                    "result=contract-missing reason=no-owner-anchors"
                             + " marker=" + MARKER_NO_OWNER_ANCHORS
                             + " mutationKind=" + safe(mutationKind)
                             + " action=stay-serialized");
@@ -92,7 +92,7 @@ final class SyntheticMultiRegionMutationExecutor {
         try {
             if (!invokeBoolean(event, hooks.prepare())) {
                 BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                        "result=blocked reason=prepare-returned-false"
+                        "result=contract-rejected reason=prepare-returned-false"
                                 + " marker=" + MARKER_PREPARE_BLOCKED
                                 + " prepareHook=" + hooks.prepare().getName()
                                 + " mutationKind=" + safe(mutationKind)
@@ -116,7 +116,7 @@ final class SyntheticMultiRegionMutationExecutor {
             }
             boolean verified = invokeVerify(event, hooks.verify(), anchors.size(), completed);
             BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                    "result=" + (verified ? "completed" : "blocked")
+                    "result=" + (verified ? "completed" : "contract-rejected")
                             + " reason=" + (verified ? "verified" : "verify-returned-false")
                             + " marker=" + (verified ? MARKER_COMPLETED_VERIFIED : MARKER_VERIFY_BLOCKED)
                             + " scheduledOwners=" + anchors.size()
@@ -137,7 +137,7 @@ final class SyntheticMultiRegionMutationExecutor {
         }
         if (futures.isEmpty()) {
             BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                    "result=blocked reason=no-applicable-owner-anchors"
+                    "result=contract-missing reason=no-applicable-owner-anchors"
                             + " marker=" + MARKER_NO_OWNER_ANCHORS
                             + " mutationKind=" + safe(mutationKind)
                             + " action=stay-serialized");
@@ -170,7 +170,7 @@ final class SyntheticMultiRegionMutationExecutor {
                     }
                     boolean verified = invokeVerify(event, hooks.verify(), futures.size(), completed);
                     BridgeDiagnostics.syntheticMultiRegionMutationExecute(eventName, listenerCount, observation,
-                            "result=" + (verified ? "completed" : "blocked")
+                            "result=" + (verified ? "completed" : "contract-rejected")
                                     + " reason=" + (verified ? "verified" : "verify-returned-false")
                                     + " marker=" + (verified ? MARKER_COMPLETED_VERIFIED : MARKER_VERIFY_BLOCKED)
                                     + " scheduledOwners=" + futures.size()
@@ -295,12 +295,7 @@ final class SyntheticMultiRegionMutationExecutor {
     }
 
     private static Plugin bridgePlugin() {
-        try {
-            Plugin plugin = Bukkit.getPluginManager().getPlugin("FoliaBytecodeBridge");
-            if (plugin != null) return plugin;
-        } catch (Throwable ignored) {
-        }
-        throw new IllegalStateException("FoliaBytecodeBridge plugin is not enabled for synthetic mutation executor");
+        return BridgePluginResolver.requirePlugin("synthetic mutation executor");
     }
 
     private static String hookName(Method method) {

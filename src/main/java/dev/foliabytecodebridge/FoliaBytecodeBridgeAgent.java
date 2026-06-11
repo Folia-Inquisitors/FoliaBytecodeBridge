@@ -32,9 +32,12 @@ import org.bukkit.util.Vector;
 
 import java.lang.instrument.Instrumentation;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +45,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import java.util.regex.Pattern;
 import java.util.concurrent.Callable;
 
@@ -58,6 +65,7 @@ public final class FoliaBytecodeBridgeAgent {
 
     private static volatile boolean installed;
     private static final List<JarFile> APPENDED_SERVER_JARS = Collections.synchronizedList(new ArrayList<>());
+    private static volatile File helperRuntimeJar;
 
     private FoliaBytecodeBridgeAgent() {
     }
@@ -82,6 +90,7 @@ public final class FoliaBytecodeBridgeAgent {
         if (installed) return;
         try {
             openJavaNetForRuntimeVisibility(instrumentation);
+            appendBridgeHelperJarToSystemSearch(instrumentation);
             appendServerLibraries(instrumentation);
             ClassFileLocator serverFallbackLocator = serverFallbackLocator();
             if (BridgeConfig.metadataOverlayAll()) {
@@ -91,6 +100,11 @@ public final class FoliaBytecodeBridgeAgent {
                 instrumentation.addTransformer(new RawMetadataTransformer(), true);
                 retransformMetadataGate(instrumentation);
             }
+            // Built-in server-fired events do not pass through plugin bytecode calling PluginManager#callEvent.
+            // This exact API boundary rewrite lets RegisteredListener callbacks enter the same synthetic
+            // compatibility model without rewriting every plugin listener class.
+            instrumentation.addTransformer(new RawRegisteredListenerTransformer(), true);
+            retransformRegisteredListenerBoundary(instrumentation);
             // NMS compatibility shims are not route-family rewrites. They patch missing server-internal
             // member shapes before server classes load, so keep them separate from plugin bytecode routing.
             instrumentation.addTransformer(new NmsSyntheticMemberTransformer(), true);
@@ -193,7 +207,14 @@ public final class FoliaBytecodeBridgeAgent {
             TypedRouteCandidateReporter.CandidateReport candidateReport =
                     TypedRouteCandidateReporter.inspect(
                             TypedRouteCandidateReporter.TypeName.of(typeDescription.getName()), classLoader);
-            BridgeDiagnostics.typedRouteCandidateScan(typeDescription.getName(), classLoader, candidateReport);
+            boolean typedTransformCandidate = candidateReport.routeCandidate() || candidateReport.scanUnknown();
+            BridgeDiagnostics.typedRouteCandidateScan(typeDescription.getName(), classLoader, candidateReport,
+                    typedTransformCandidate ? "attempted" : "skipped-no-registered-route-candidate");
+            if (!typedTransformCandidate) {
+                BridgeDiagnostics.transformSkipped(typeDescription.getName(), classLoader,
+                        "typed-prescan-no-registered-route-candidate");
+                return builder;
+            }
             BridgeRuntimeVisibility.ensureBridgeVisible(classLoader, typeDescription.getName());
 
             // Keep substitutions grouped by source API so the matrix in docs/TRANSFORM_MATRIX.md stays easy to audit.
@@ -227,6 +248,91 @@ public final class FoliaBytecodeBridgeAgent {
             BridgeDiagnostics.attachWarning("runtime-visibility result=module-open-failed throwable="
                     + throwable.getClass().getName() + ": " + throwable.getMessage());
         }
+    }
+
+    static URL bridgeHelperJarUrl() {
+        try {
+            File file = helperRuntimeJar;
+            return file == null || !file.isFile() ? null : file.toURI().toURL();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void appendBridgeHelperJarToSystemSearch(Instrumentation instrumentation) {
+        try {
+            CodeSource source = FoliaBytecodeBridgeAgent.class.getProtectionDomain().getCodeSource();
+            URL location = source == null ? null : source.getLocation();
+            if (location == null) {
+                BridgeDiagnostics.attachWarning(
+                        "helper-visibility result=bridge-jar-missing action=append-system-search");
+                return;
+            }
+
+            File bridgeJar = new File(location.toURI());
+            if (!bridgeJar.isFile()) {
+                BridgeDiagnostics.attachWarning(
+                        "helper-visibility result=bridge-jar-not-file action=append-system-search jar="
+                                + bridgeJar);
+                return;
+            }
+
+            File helperJar = helperRuntimeJar(bridgeJar);
+            if (helperJar == null || !helperJar.isFile()) {
+                BridgeDiagnostics.attachWarning(
+                        "helper-visibility result=helper-runtime-jar-missing action=append-system-search");
+                return;
+            }
+
+            // Raw and typed transformers emit INVOKESTATIC calls into bridge helper classes. The system-visible
+            // helper jar must not contain the Bukkit plugin main class or anonymous entrypoint helpers; otherwise
+            // Bukkit may resolve plugin-owned classes from the wrong parent loader and split plugin bootstrap access.
+            JarFile jarFile = new JarFile(helperJar);
+            instrumentation.appendToSystemClassLoaderSearch(jarFile);
+            APPENDED_SERVER_JARS.add(jarFile);
+            BridgeDiagnostics.agentClasspath("helper-runtime-jar-appended-to-system-search=" + helperJar.getName());
+        } catch (Throwable throwable) {
+            BridgeDiagnostics.attachWarning("helper-visibility result=append-system-search-failed throwable="
+                    + throwable.getClass().getName() + ": " + throwable.getMessage());
+        }
+    }
+
+    private static File helperRuntimeJar(File bridgeJar) throws IOException {
+        File existing = helperRuntimeJar;
+        if (existing != null && existing.isFile()) return existing;
+
+        File temp = File.createTempFile("folia-bytecode-bridge-helper-", ".jar");
+        temp.deleteOnExit();
+        try (JarFile input = new JarFile(bridgeJar);
+             ZipOutputStream output = new ZipOutputStream(new FileOutputStream(temp))) {
+            Enumeration<JarEntry> entries = input.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (!helperRuntimeEntry(name)) continue;
+                ZipEntry copy = new ZipEntry(name);
+                copy.setTime(entry.getTime());
+                output.putNextEntry(copy);
+                if (!entry.isDirectory()) {
+                    try (InputStream entryStream = input.getInputStream(entry)) {
+                        entryStream.transferTo(output);
+                    }
+                }
+                output.closeEntry();
+            }
+        }
+        helperRuntimeJar = temp;
+        BridgeDiagnostics.agentClasspath("helper-runtime-jar-created=" + temp.getName()
+                + " source=" + bridgeJar.getName()
+                + " note=excludes-bukkit-plugin-entrypoint-classes");
+        return temp;
+    }
+
+    private static boolean helperRuntimeEntry(String name) {
+        if (name == null) return false;
+        if (!name.startsWith("dev/foliabytecodebridge/") || !name.endsWith(".class")) return false;
+        return !name.equals("dev/foliabytecodebridge/FoliaBytecodeBridgePlugin.class")
+                && !name.startsWith("dev/foliabytecodebridge/FoliaBytecodeBridgePlugin$");
     }
 
     private static ClassFileLocator serverFallbackLocator() {
@@ -321,6 +427,23 @@ public final class FoliaBytecodeBridgeAgent {
                 instrumentation.retransformClasses(loadedClass);
             } catch (Throwable throwable) {
                 BridgeDiagnostics.attachWarning("metadataOverlay=" + BridgeConfig.metadataOverlay()
+                        + " retransformClass=" + loadedClass.getName()
+                        + " result=failed throwable=" + throwable.getClass().getName()
+                        + ": " + throwable.getMessage());
+            }
+            return;
+        }
+    }
+
+    private static void retransformRegisteredListenerBoundary(Instrumentation instrumentation) {
+        if (!BridgeConfig.syntheticListenerBoundary() || !instrumentation.isRetransformClassesSupported()) return;
+        for (Class<?> loadedClass : instrumentation.getAllLoadedClasses()) {
+            if (!"org.bukkit.plugin.RegisteredListener".equals(loadedClass.getName())) continue;
+            if (!instrumentation.isModifiableClass(loadedClass)) return;
+            try {
+                instrumentation.retransformClasses(loadedClass);
+            } catch (Throwable throwable) {
+                BridgeDiagnostics.attachWarning("syntheticListenerBoundary=true"
                         + " retransformClass=" + loadedClass.getName()
                         + " result=failed throwable=" + throwable.getClass().getName()
                         + ": " + throwable.getMessage());
@@ -802,7 +925,21 @@ public final class FoliaBytecodeBridgeAgent {
                         missingType, optionalDependencyAsmSummary(typeName, classLoader));
                 return;
             }
+            if (byteBuddyTypeMetadataShape(throwable)) {
+                BridgeDiagnostics.transformShapeSkipped(typeName, classLoader, throwable);
+                return;
+            }
             BridgeDiagnostics.transformError(typeName, throwable);
+        }
+
+        private boolean byteBuddyTypeMetadataShape(Throwable throwable) {
+            for (Throwable current = throwable; current != null; current = current.getCause()) {
+                String message = current.getMessage();
+                if (message != null && message.contains("Illegal type annotations")) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private String optionalDependencyMissingType(Throwable throwable) {

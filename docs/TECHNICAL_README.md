@@ -38,6 +38,7 @@ On normal Paper/Spigot, calls pass through to the original Bukkit scheduler.
 - [Architecture notes](ARCHITECTURE.md) explain the agent/runtime split and extension rules.
 - [Bytecode routes](BYTECODE_ROUTES.md) explains the official `RouteFamily` architecture map and when another plugin with the same bytecode is covered.
 - [Diagnostics](DIAGNOSTICS.md) explains debug flags and failure-path logs.
+- [Stabilization audit](STABILIZATION_AUDIT.md) separates transformer targeting, shutdown, and lifecycle evidence from normal route failures.
 - [Direct unsafe trace matrix](DIRECT_UNSAFE_TRACE_MATRIX.md) lists high-risk player/world/block/entity probes.
 - [Probe audit](PROBE_AUDIT.md) records how external adapter examples and uploaded plugin references informed the probe coverage.
 - [Probe plugin notes](PROBE_PLUGIN.md) describe the optional `FBBProbe` live-server test jar for intentionally triggering route families.
@@ -167,7 +168,9 @@ servers. `FBBProbe` is transformed by the bridge; `FBBProbeControl` uses an
 ignored package so it shows raw Folia behavior. Run `/fbbprobe matrix safe` and
 `/fbbprobecontrol matrix safe` as an operator player to compare bridge behavior
 against the control across current, entity, async, global, region, and
-foreign-region contexts.
+foreign-region contexts. The transformed probe auto-runs startup evidence by
+default; the control probe defaults to `startupModes=off` so raw baseline guard
+failures do not drown normal bridge startup evidence.
 
 ## Status
 

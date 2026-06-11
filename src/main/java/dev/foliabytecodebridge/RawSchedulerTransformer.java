@@ -77,9 +77,9 @@ final class RawSchedulerTransformer implements ClassFileTransformer {
                 @Override
                 public void visitEnd() {
                     if (anonymousBukkitRunnableSubclass) {
-                        // Some plugin classes can load before self-attach sees their caller class. Anonymous
-                        // exposed this with PlayersConfigManager#loadConfig still invoking
-                        // PlayersConfigManager$1#runTaskAsynchronously(Plugin). Adding narrow overrides on the
+                        // Some plugin classes can load before self-attach sees their caller class. Live testing
+                        // exposed this with a plugin method still invoking an anonymous
+                        // BukkitRunnable owner through runTaskAsynchronously(Plugin). Adding narrow overrides on the
                         // anonymous BukkitRunnable receiver lets virtual dispatch reach the bridge even when the
                         // already-loaded caller method could not be rewritten.
                         addMissingBukkitRunnableOverrides(this);
@@ -191,10 +191,9 @@ final class RawSchedulerTransformer implements ClassFileTransformer {
             return schedulerReplacement(name, descriptor);
         }
         // Anonymous BukkitRunnable subclasses compile calls with the anonymous class as the bytecode owner,
-        // for example PlayersConfigManager$1#runTaskAsynchronously(Plugin). Only accept that explicit
-        // anonymous-owner shape here. A live Essentials smoke test showed plugin helper methods such as
-        // Essentials#runTaskAsynchronously(Runnable) can share the same name/return type but are not
-        // BukkitRunnable receivers; widening this guard misroutes them into the runnable bridge.
+        // for example ExampleTask$1#runTaskAsynchronously(Plugin). Only accept that explicit anonymous-owner
+        // shape here. Live smoke testing showed plugin helper methods can share the same name/return type
+        // while using a different receiver contract; widening this guard misroutes them into the runnable bridge.
         if ((opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKESPECIAL)
                 && isBukkitRunnableOwnerShape(owner)
                 && descriptor.startsWith("(L")) {

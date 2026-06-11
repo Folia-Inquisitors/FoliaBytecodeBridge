@@ -37,7 +37,7 @@ or the broader:
 | `Player#teleport(Location,TeleportCause)` | `UnsafeCallBridge#playerTeleport` | `A_ENTITY` | `player` | `entity-scheduler-teleport-async` | Cause-aware player teleport shimmed to `teleportAsync` on Folia. |
 | `Player#setGameMode(GameMode)` | `UnsafeCallBridge#playerSetGameMode` | `A_ENTITY` | `player` | `entity-scheduler-mutation` | Player mutation. |
 | `Player#setVelocity(Vector)` | `UnsafeCallBridge#playerSetVelocity` | `A_ENTITY` | `player` | `entity-scheduler-mutation` | Player mutation. |
-| `Player#playSound(...)` | `UnsafeCallBridge#playerPlaySound` | `A_ENTITY` | `player` | `entity-scheduler-audio` | Player audio effect; seen in kit plugin reference and Essentials command effects. |
+| `Player#playSound(...)` | `UnsafeCallBridge#playerPlaySound` | `A_ENTITY` | `player` | `entity-scheduler-audio` | Player audio effect; seen in legacy kit and command-effect plugin references. |
 | `Player#openInventory(Inventory)` | `UnsafeCallBridge#playerOpenInventory` | `D_PLAYER_UI` | `player` | `entity-scheduler-ui` | Player UI mutation. On Folia this is preemptive: if the current thread does not own the player, the bridge schedules through the player's entity scheduler before opening the inventory. |
 | `Player#closeInventory()` | `UnsafeCallBridge#playerCloseInventory` | `D_PLAYER_UI` | `player` | `entity-scheduler-ui` | Player UI mutation. On Folia this is preemptive and prevents async/global close-event failures. |
 | `HumanEntity#openInventory(Inventory)` | `UnsafeCallBridge#humanOpenInventory` | `D_PLAYER_UI` | `player` | `entity-scheduler-ui` | Player/human UI mutation when bytecode owner is the inherited interface. On Folia this routes through the receiver's entity scheduler. |

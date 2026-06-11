@@ -272,8 +272,9 @@ Folia's `Region-Threading-Base` patch marks these with
 `UnsupportedOperationException // Folia - not supported yet`, so the bridge
 must not retry them through region/global/entity schedulers. The probe now
 keeps the first failing owner/name/descriptor loud and reports dependent
-`Team#setOption/addEntry/removeEntry` probes as `result=blocked
-blockedBy=Scoreboard#registerNewTeam` when no team can be created. That keeps
+`Team#setOption/addEntry/removeEntry` probes as
+`result=contract-missing blockedBy=Scoreboard#registerNewTeam` when no team can
+be created. That keeps
 the evidence precise instead of producing repeated stack traces for the same
 root blocker under different Team method names.
 

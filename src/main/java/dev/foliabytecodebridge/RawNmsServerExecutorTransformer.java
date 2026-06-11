@@ -12,14 +12,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Rewrites legacy Paper/NMS "main server executor" calls into the global route.
+ * Rewrites legacy Paper/NMS "main server executor" calls into the current
+ * executor compatibility shim.
  *
  * <p>Folia rejects direct {@code MinecraftServer#execute(Runnable)} because the
  * old single-main-thread executor no longer owns every server operation. This
- * bytecode shape is route-family evidence, not a plugin-specific patch:
- * any plugin adapter that calls the same NMS executor shape is routed through
- * {@link ServerExecutorBridge} so the failure remains grouped under
- * {@link RouteFamily#S_GLOBAL}.</p>
+ * bytecode shape is NMS compatibility evidence first and Bukkit route-family
+ * evidence second. The current shim still uses the global scheduler as a
+ * conservative executor bridge, but runtime diagnostics tag failures as
+ * {@link NmsCompatFamily#NMS_EXECUTOR_CONTEXT} when the runnable expects
+ * regionized world/chunk state.</p>
  */
 final class RawNmsServerExecutorTransformer implements ClassFileTransformer {
 
@@ -56,6 +58,11 @@ final class RawNmsServerExecutorTransformer implements ClassFileTransformer {
                                 return;
                             }
 
+                            BridgeDiagnostics.nmsCompatExecutorPath(className, loader, protectionDomain,
+                                    name, descriptor, MINECRAFT_SERVER, "execute",
+                                    EXECUTE_DESCRIPTOR, "MINECRAFT_SERVER_EXECUTOR_CONTEXT",
+                                    "rewritten",
+                                    "server-internal-minecraft-server-executor-shape-observed");
                             BridgeDiagnostics.guardPath(className, loader, protectionDomain,
                                     name, descriptor, MINECRAFT_SERVER, "execute",
                                     EXECUTE_DESCRIPTOR, RouteFamily.S_GLOBAL,

@@ -1,5 +1,177 @@
 # Smoke Test Result
 
+## 2026-06-11 - NMS Owner Candidate Trace
+
+Build marker:
+
+```text
+2026-06-11-nms-owner-candidate-trace
+```
+
+The NMS executor lane now records candidate owner clues while scanning
+server-internal runnables. In addition to direct `Location`, `Chunk`, `Entity`,
+`BlockPos`, and `ChunkPos` clues, the extractor can promote a runnable-local
+captured world plus exactly two captured integer fields into a chunk owner. This
+targets generic executor-lambda bytecode shapes where the runnable carries the
+world and chunk coordinates together.
+
+Owner misses now include `clueTrail=...` so a future pass can see which fields
+were inspected before the route stayed `no-owner-contract`. Repeated task
+failures remain fully preserved in `debug.log`, while console output is
+repeat-aware.
+
+Smoke evidence:
+
+```text
+SMOKE_OK ... routeRules=132 ... nmsCompatibilityLaneEvidence=owner-found,captured-world-int-pair,owner-miss,lane-context ...
+```
+
+## 2026-06-10 - Contract Language Cleanup
+
+Build marker:
+
+```text
+2026-06-10-contract-language-cleanup
+```
+
+Clarified pathfinding language without changing route behavior. Unknown shared
+event paths now report `no-owner-contract` and `serialized-unproven` instead of
+older broad wording. Synthetic multi-region contract probes report
+`contract-missing`, `contract-disabled`, or `contract-rejected` when the bridge
+does not execute/promote a contract path. Hot entity/player read routes report
+`policy=entity-owner-read-return`.
+
+## 2026-06-10 - Architecture Decision Markers
+
+Build marker:
+
+```text
+2026-06-10-architecture-decision-markers
+```
+
+Added stable `marker=FBB_ARCH_..._V1` IDs to
+`[FBB architecture-decision]` lines. The human `path=...` value remains, while
+the marker gives log tools an exact string to filter across runs.
+
+Smoke verified the requested markers:
+
+```text
+FBB_ARCH_DECISION_SUMMARY_V1
+FBB_ARCH_OWNER_EXTRACT_V1
+FBB_ARCH_RETURN_RISK_V1
+FBB_ARCH_ROUTE_EXIT_V1
+FBB_ARCH_STAY_SERIALIZED_V1
+FBB_ARCH_POLICY_BLOCKED_V1
+FBB_ARCH_PROMOTION_EVIDENCE_V1
+FBB_ARCH_HELPER_VISIBILITY_V1
+```
+
+## 2026-06-10 - Architecture Decision Traces
+
+Build marker:
+
+```text
+2026-06-10-architecture-decision-traces
+```
+
+Expanded `architecture-pathfinding.debug` with compact
+`[FBB architecture-decision]` summaries. These are trace-only breadcrumbs and
+do not change route behavior.
+
+Smoke verified all requested decision paths:
+
+```text
+stage=decision/summary
+stage=decision/owner/extract
+stage=decision/return/sync-risk
+stage=decision/route/exit
+stage=decision/route/stay-serialized
+stage=decision/policy/blocked
+stage=decision/promotion/evidence
+stage=decision/helper/visibility
+```
+
+Smoke result:
+
+```text
+SMOKE_OK routeRules=132 asmRouteHits=143 listenerConcurrencyEvidence=synthetic-listener-concurrency-reentry
+```
+
+## 2026-06-10 - Architecture Pathfinding Debug
+
+Build marker:
+
+```text
+2026-06-10-architecture-pathfinding-debug
+```
+
+Added `plugins/FoliaBytecodeBridge/architecture-pathfinding.debug` as a
+focused decision-path timeline. It does not replace `debug.log`; it copies
+relevant architecture evidence and tags each line with a stage such as
+`boot/agent-attach`, `bytecode/prescan`, `bytecode/rewrite-result`,
+`model/route-rule`, `runtime/unsafe-call-route`, `synthetic/event-state`,
+`synthetic/multi-region`, or `compat/nms-shape`.
+
+Smoke verified that the file is created and contains staged route-thinking
+lines:
+
+```text
+stage=bytecode/rewrite-result [FBB transform] ...
+stage=model/route-rule [FBB model] ...
+```
+
+Smoke result:
+
+```text
+SMOKE_OK routeRules=132 asmRouteHits=143 listenerConcurrencyEvidence=synthetic-listener-concurrency-reentry
+```
+
+## 2026-06-05 - Foundation Route Registry Cleanup
+
+Build marker:
+
+```text
+2026-06-05-foundation-route-registry
+```
+
+This pass promoted common scheduler, runnable, entity, player visibility,
+location, block, sound, and world-location shapes into `RouteRuleRegistry` so
+runtime evidence can normalize back to the central route model instead of
+falling through as `dynamic-or-unregistered`.
+
+It also tightened the diagnostics policy:
+
+- debug file keeps every route decision, transform skip, candidate scan,
+  repeat summary, synthetic event line, and failure marker
+- console keeps boot markers, important failures, and compact summaries unless
+  `consoleVerbose=true`
+- deliberate synthetic listener probe failures are debug-file evidence by
+  default, not console spam
+
+Smoke result:
+
+```text
+SMOKE_OK routeRules=132 asmRouteHits=143 listenerConcurrencyEvidence=synthetic-listener-concurrency-reentry multiRegionMutationContractEvidence=multi-region-mutation-contract-ready-and-executed
+```
+
+Remaining dynamic evidence is intentional or still research-shaped: shaded
+helper runtime aliases, task-failure labels, repeat diagnostics, and legacy
+server-shape compatibility probes.
+
+Packaging follow-up:
+
+```text
+java -javaagent:target\folia-bytecode-bridge-0.1.1-experimental.3.jar -version
+```
+
+reaches `[FBB attach]` after ensuring Byte Buddy is bundled under
+`net/bytebuddy/...` inside the agent jar. The smoke rerun after that packaging
+fix still reports:
+
+```text
+SMOKE_OK routeRules=132 asmRouteHits=143 listenerConcurrencyEvidence=synthetic-listener-concurrency-reentry
+```
+
 ## 2026-06-02 - Synthetic Multi-Region Mutation Executor Phase 5B
 
 Added a guarded executor for exact synthetic multi-region mutation contracts.
@@ -29,8 +201,8 @@ multiRegionMutationContractEvidence=multi-region-mutation-contract-ready-and-exe
 Smoke also covers negative exact-contract outcomes:
 
 ```text
-[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=prepare-returned-false prepareHook=prepareMutation
-[FBB synthetic-multi-region] phase=execute-mutation result=blocked reason=verify-returned-false scheduledOwners=2 completedOwners=2 verifyHook=verifyAggregateMutation mode=smoke-inline
+[FBB synthetic-multi-region] phase=execute-mutation result=contract-rejected reason=prepare-returned-false prepareHook=prepareMutation
+[FBB synthetic-multi-region] phase=execute-mutation result=contract-rejected reason=verify-returned-false scheduledOwners=2 completedOwners=2 verifyHook=verifyAggregateMutation mode=smoke-inline
 ```
 
 Those checks prove the executor does not silently continue after a failed
@@ -140,7 +312,7 @@ Expected evidence:
 ```text
 [FBB synthetic-event-state] action=scan-start route=none ownerStatus=scanning
 [FBB synthetic-event-state] action=route-exit route=A_ENTITY ownerStatus=owner-found
-[FBB synthetic-event-state] action=serialized route=none ownerStatus=owner-missed
+[FBB synthetic-event-state] action=serialized route=none ownerStatus=no-owner-contract
 [FBB synthetic-owner-miss] route=none routeFamily=UNKNOWN ... no-compatible-owner-getter
 [FBB synthetic-owner-miss] route=none routeFamily=UNKNOWN ... getBlocks:multi-region-collection
 [FBB synthetic-listener-route-exit] route=A_ENTITY ... listener=SmokePlugin/...
@@ -744,7 +916,7 @@ The smoke suite now covers both sides of the multi-region mutation contract
 model:
 
 ```text
-[FBB synthetic-multi-region] phase=contract-mutation result=blocked reason=missing-two-phase-contract
+[FBB synthetic-multi-region] phase=contract-mutation result=contract-missing reason=missing-two-phase-contract
 [FBB synthetic-multi-region] phase=contract-mutation result=ready-not-executed contract=prepare,owner-apply,aggregate-verify
 ```
 
@@ -784,7 +956,7 @@ multiRegionMutationPlanEvidence=multi-region-mutation-planned-not-executed
 Smoke verifies both sides:
 
 ```text
-[FBB synthetic-multi-region] phase=plan-mutation result=blocked reason=no-explicit-mutation-intent
+[FBB synthetic-multi-region] phase=plan-mutation result=serialized-unproven reason=no-explicit-mutation-intent
 [FBB synthetic-multi-region] phase=plan-mutation result=planned-not-executed phases=prepare,owner-apply,aggregate-verify
 ```
 
@@ -1242,10 +1414,10 @@ Important evidence:
 
 ```text
 [FBB attach] mode=SELF_ATTACH installed=true phase=onLoad exit=0
-[FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager path=raw-scheduler result=patched replacements=1
-[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
-[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
-[FBB scheduler] api=BukkitScheduler#runTaskAsynchronously route=S_ASYNC policy=async plugin=server-utility plugin reference caller=com.earth2me.essentials.server-utility plugin reference#runTaskAsynchronously(server-utility plugin reference.java:1237)
+[FBB transform] class=example.plugin.tasks.InventoryUpdateTaskManager path=raw-scheduler result=patched replacements=1
+[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=example.plugin.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
+[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=example.plugin.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
+[FBB scheduler] api=BukkitScheduler#runTaskAsynchronously route=S_ASYNC policy=async plugin=server-utility plugin reference caller=example.serverutility.PluginHelper#runTaskAsynchronously(PluginHelper.java:1237)
 Done (30.074s)! For help, type "help"
 ```
 
@@ -1270,38 +1442,38 @@ unsupportedErrors=0
 Important evidence:
 
 ```text
-[FBB bytecode-path] class=com.earth2me.essentials.server-utility plugin reference in=runTaskAsynchronously(Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#runTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/lang/Object;
-[FBB bytecode-path] class=pk.ajneb97.database.MySQLConnection in=getPlayer(Ljava/lang/String;Lpk/ajneb97/model/internal/GenericCallback;)V source=pk.ajneb97.database.MySQLConnection$1#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-[FBB bytecode-path] class=pk.ajneb97.tasks.InventoryUpdateTaskManager in=start()V source=pk.ajneb97.tasks.InventoryUpdateTaskManager$1#runTaskTimer(Lorg/bukkit/plugin/Plugin;JJ)Lorg/bukkit/scheduler/BukkitTask; route=S_GLOBAL bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskTimer(Ljava/lang/Object;Ljava/lang/Object;JJ)Ljava/lang/Object;
+[FBB bytecode-path] class=example.serverutility.PluginHelper in=runTaskAsynchronously(Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; source=org.bukkit.scheduler.BukkitScheduler#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;Ljava/lang/Runnable;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#runTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/lang/Object;
+[FBB bytecode-path] class=example.plugin.database.MySQLConnection in=getPlayer(Ljava/lang/String;Lexample/plugin/model/GenericCallback;)V source=example.plugin.database.MySQLConnection$1#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+[FBB bytecode-path] class=example.plugin.tasks.InventoryUpdateTaskManager in=start()V source=example.plugin.tasks.InventoryUpdateTaskManager$1#runTaskTimer(Lorg/bukkit/plugin/Plugin;JJ)Lorg/bukkit/scheduler/BukkitTask; route=S_GLOBAL bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskTimer(Ljava/lang/Object;Ljava/lang/Object;JJ)Ljava/lang/Object;
 ```
 
-The boot-only live run did not trigger `PlayersConfigManager#loadConfig`, which is a player-join path. The deep bytecode smoke still verifies that exact class shape:
+The boot-only live run did not trigger the player data load path. The deep bytecode smoke still verifies that exact anonymous-runnable class shape:
 
 ```text
-[FBB bytecode-path] class=pk.ajneb97.configs.PlayersConfigManager in=loadConfig(Ljava/util/UUID;Lpk/ajneb97/model/internal/GenericCallback;)V source=pk.ajneb97.configs.PlayersConfigManager$1#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+[FBB bytecode-path] class=example.plugin.config.PlayersConfigManager in=loadConfig(Ljava/util/UUID;Lexample/plugin/model/GenericCallback;)V source=example.plugin.config.PlayersConfigManager$1#runTaskAsynchronously(Lorg/bukkit/plugin/Plugin;)Lorg/bukkit/scheduler/BukkitTask; route=S_ASYNC bridge=ObjectSchedulerBridge#bukkitRunnableRunTaskAsynchronously(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 ```
 
 ## Player Join Follow-Up, 2026-05-28 17:18
 
-The player-join retest still failed at `PlayersConfigManager.loadConfig(PlayersConfigManager.java:71)`. The useful evidence was:
+The player-join retest still failed at the plugin's player config loader. The useful evidence was:
 
 ```text
-[FBB transform] class=pk.ajneb97.configs.PlayersConfigManager$1 path=raw-scheduler result=patched replacements=1
+[FBB transform] class=example.plugin.config.PlayersConfigManager$1 path=raw-scheduler result=patched replacements=1
 java.lang.UnsupportedOperationException
 at org.bukkit.scheduler.BukkitRunnable.runTaskAsynchronously(BukkitRunnable.java:63)
-at pk.ajneb97.configs.PlayersConfigManager.loadConfig(PlayersConfigManager.java:71)
+at example.plugin.config.PlayersConfigManager.loadConfig(PlayersConfigManager.java:71)
 ```
 
-That means the anonymous task class loaded and was transformed, but the outer caller instruction was still invoking the inherited BukkitRunnable method. The next bridge rule adds narrow synthetic overrides to anonymous BukkitRunnable subclasses, so virtual dispatch can route `PlayersConfigManager$1#runTaskAsynchronously(Plugin)` through `ObjectSchedulerBridge` even if the caller class was loaded before self-attach could rewrite it.
-- The bytecode inventory scanner found 79 required reusable call-shape hits across kit plugin reference and server-utility plugin reference, including server-utility plugin reference' shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` `/home` path.
+That means the anonymous task class loaded and was transformed, but the outer caller instruction was still invoking the inherited BukkitRunnable method. The next bridge rule adds narrow synthetic overrides to anonymous BukkitRunnable subclasses, so virtual dispatch can route `ExampleTask$1#runTaskAsynchronously(Plugin)` through `ObjectSchedulerBridge` even if the caller class was loaded before self-attach could rewrite it.
+- The bytecode inventory scanner found 79 required reusable call-shape hits across kit and server-utility plugin references, including a shaded `PaperLib#teleportAsync(Entity,Location,TeleportCause)` home-command path.
 - It records two `World#spawnEntity` hits as known gaps because the local Paper 26.1.2 API jar used to compile the bridge does not expose that method.
 
-## server-utility plugin reference `/home` Teleport Follow-Up, 2026-05-28
+## Server-Utility Home Teleport Follow-Up, 2026-05-28
 
 The `/home` path goes through `AsyncTeleport#nowAsync`, then one of these bytecode shapes:
 
 ```text
-com/earth2me/essentials/paperlib/PaperLib#teleportAsync(Entity,Location,TeleportCause)
+example/serverutility/paperlib/PaperLib#teleportAsync(Entity,Location,TeleportCause)
 org/bukkit/entity/Player#teleport(Location,TeleportCause)
 org/bukkit/entity/Entity#teleportAsync(Location,TeleportCause)
 ```
@@ -1438,18 +1610,18 @@ The late self-attach path patched already-loaded plugin classes before enable,
 including:
 
 ```text
-[FBB transform] class=com.earth2me.essentials.server-utility plugin reference loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
-[FBB transform] class=pk.ajneb97.tasks.PlayerDataSaveTask loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
-[FBB transform] class=pk.ajneb97.tasks.InventoryUpdateTaskManager loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
+[FBB transform] class=example.serverutility.PluginHelper loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
+[FBB transform] class=example.plugin.tasks.PlayerDataSaveTask loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
+[FBB transform] class=example.plugin.tasks.InventoryUpdateTaskManager loader=org.bukkit.plugin.java.PluginClassLoader path=raw-scheduler result=patched
 ```
 
 Startup then emitted scheduler evidence and reached `Done` without the previous
 Folia `UnsupportedOperationException` enable failures:
 
 ```text
-[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
-[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=pk.ajneb97.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
-[FBB scheduler] api=BukkitScheduler#scheduleSyncDelayedTask route=S_GLOBAL policy=global plugin=server-utility plugin reference caller=com.earth2me.essentials.server-utility plugin reference#scheduleSyncDelayedTask(server-utility plugin reference.java:1252)
+[FBB scheduler] api=BukkitRunnable#runTaskTimer route=S_GLOBAL policy=global-repeating plugin=kit plugin reference caller=example.plugin.tasks.InventoryUpdateTaskManager#start(InventoryUpdateTaskManager.java:28)
+[FBB scheduler] api=BukkitRunnable#runTaskTimerAsynchronously route=S_ASYNC policy=async-repeating plugin=kit plugin reference caller=example.plugin.tasks.PlayerDataSaveTask#start(PlayerDataSaveTask.java:32)
+[FBB scheduler] api=BukkitScheduler#scheduleSyncDelayedTask route=S_GLOBAL policy=global plugin=server-utility plugin reference caller=example.serverutility.PluginHelper#scheduleSyncDelayedTask(PluginHelper.java:1252)
 ```
 
 An earlier self-attach pass logged one typed-transform diagnostic on a server

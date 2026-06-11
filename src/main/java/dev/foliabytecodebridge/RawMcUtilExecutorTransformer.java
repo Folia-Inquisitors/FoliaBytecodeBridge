@@ -61,6 +61,11 @@ final class RawMcUtilExecutorTransformer implements ClassFileTransformer {
                                 return;
                             }
 
+                            BridgeDiagnostics.nmsCompatExecutorPath(className, loader, protectionDomain,
+                                    name, descriptor, MCUTIL, "MAIN_EXECUTOR.execute",
+                                    "(Ljava/lang/Runnable;)V", "MCUTIL_MAIN_EXECUTOR_CONTEXT",
+                                    "rewritten",
+                                    "server-internal-main-executor-shape-observed");
                             BridgeDiagnostics.guardPath(className, loader, protectionDomain,
                                     name, descriptor, MCUTIL, "MAIN_EXECUTOR.execute",
                                     "(Ljava/lang/Runnable;)V", RouteFamily.S_GLOBAL,

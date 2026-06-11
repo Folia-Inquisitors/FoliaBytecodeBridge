@@ -2,7 +2,9 @@ package smoketest;
 
 import dev.foliabytecodebridge.InstructionRouteScanner;
 import dev.foliabytecodebridge.NmsCompatModel;
+import dev.foliabytecodebridge.NmsCompatibilityLaneSmoke;
 import dev.foliabytecodebridge.NmsSyntheticMemberTransformerSmoke;
+import dev.foliabytecodebridge.ObjectSchedulerBridge;
 import dev.foliabytecodebridge.RawLegacyMainThreadTransformerSmoke;
 import dev.foliabytecodebridge.RawMcUtilExecutorTransformerSmoke;
 import dev.foliabytecodebridge.RawNmsServerExecutorTransformerSmoke;
@@ -97,7 +99,7 @@ public final class SmokeMain {
         BytecodeInventorySmoke.Result inventory = BytecodeInventorySmoke.scan(pluginJars);
         int rawInheritedOwnerHits = RawSchedulerTransformerSmoke.assertInheritedBukkitRunnableAsync(pluginJars);
         int rawAnonymousOverrideHits = RawSchedulerTransformerSmoke.assertAnonymousRunnableOverride(pluginJars);
-        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertEssentialsHelperNotMisclassified(pluginJars);
+        int rawWrapperGuardHits = RawSchedulerTransformerSmoke.assertPluginSchedulerHelperNotMisclassified(pluginJars);
         int rawLegacyAsyncRepeatingHits = RawSchedulerTransformerSmoke.assertLegacyAsyncRepeatingScheduler(pluginJars);
         int rawCommandDispatchHits = RawServerCommandTransformerSmoke.assertSmokeTargetCommandDispatch();
         InstructionRouteScanner.RouteReport routeReport = runInstructionRouteScannerSmoke();
@@ -108,6 +110,7 @@ public final class SmokeMain {
         String legacyMainThreadEvidence = RawLegacyMainThreadTransformerSmoke.assertLegacyMainThreadFallback();
         String mcUtilExecutorEvidence = RawMcUtilExecutorTransformerSmoke.assertMcUtilMainExecutorRewrite();
         String nmsServerExecutorEvidence = RawNmsServerExecutorTransformerSmoke.assertMinecraftServerExecuteRewrite();
+        String nmsCompatibilityLaneEvidence = NmsCompatibilityLaneSmoke.assertNmsCompatibilityLaneAndOwnerModel(world);
         RepeatDiagnosticsSmoke.emitRepeatSummaryEvidence();
         String compatibilityLaneEvidence = runCompatibilityLaneSmoke();
         String listenerRouteExitEvidence = runSyntheticListenerFailureClassifierSmoke(plugin);
@@ -266,7 +269,7 @@ public final class SmokeMain {
                 "model=split-by-loaded-chunks");
         logs.requireContains("[FBB unsafe-call]", "api=World#getEntities",
                 "route=G_WORLD_SCAN_SPLIT", "next=split-scan-by-loaded-chunks",
-                "policy=direct-non-folia");
+                "reason=proven-live-route");
         logs.requireContains("[FBB unsafe-call]", "api=World#getLoadedChunks",
                 "route=G_WORLD_SCAN_SPLIT", "next=world-loaded-chunk-index",
                 "model=loaded-chunk-index");
@@ -275,14 +278,16 @@ public final class SmokeMain {
                 "model=split-by-loaded-chunks");
         logs.requireContains("[FBB unsafe-call]", "api=World#getNearbyEntities(Location,double,double,double)",
                 "route=G_WORLD_SCAN_SPLIT", "next=region-scheduler-by-location-bounded-scan",
-                "policy=direct-non-folia");
+                "model=bounded-split-by-loaded-chunks");
         logs.requireContains("[FBB unsafe-call]", "api=ScoreboardManager#getNewScoreboard",
                 "route=D_PLAYER_UI", "next=scoreboard-detached-model-create",
-                "policy=direct-non-folia");
+                "policy=shim-model");
         logs.requireContains("[FBB unsafe-call]", "api=Scoreboard#registerNewTeam(String)",
-                "route=D_PLAYER_UI", "next=scoreboard-hard-unsupported-team-create");
+                "route=D_PLAYER_UI", "next=scoreboard-model-team-create",
+                "policy=shim-model");
         logs.requireContains("[FBB unsafe-call]", "api=Scoreboard#registerNewObjective(String,String,String)",
-                "route=D_PLAYER_UI", "next=scoreboard-hard-unsupported-objective-create");
+                "route=D_PLAYER_UI", "next=scoreboard-model-objective-create",
+                "policy=shim-model");
         logs.requireContains("[FBB unsafe-call]", "api=Objective#setDisplaySlot(DisplaySlot)",
                 "route=D_PLAYER_UI", "next=scoreboard-model-objective-mutation");
         logs.requireContains("[FBB unsafe-call]", "api=Objective#getScore(String)",
@@ -358,14 +363,14 @@ public final class SmokeMain {
                 "route=B_REGION_LOCATION", "path=direct-current-owner");
         logs.requireContains("[FBB synthetic-event-state]", "action=serialized",
                 "event=smoketest.SmokeTarget$SmokeNoOwnerEvent",
-                "ownerStatus=owner-missed", "laneStatus=serialized-compatibility-lane");
+                "ownerStatus=no-owner-contract", "laneStatus=serialized-compatibility-lane");
         logs.requireContains("[FBB synthetic-owner-miss]",
                 "event=smoketest.SmokeTarget$SmokeNoOwnerEvent",
                 "marker=FBB_SYNTHETIC_OWNER_MISS_SERIALIZED_V1",
                 "no-compatible-owner-getter");
         logs.requireContains("[FBB synthetic-event-state]", "action=serialized",
                 "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
-                "ownerStatus=owner-missed", "laneStatus=serialized-compatibility-lane");
+                "ownerStatus=no-owner-contract", "laneStatus=serialized-compatibility-lane");
         logs.requireContains("[FBB synthetic-owner-miss]",
                 "event=smoketest.SmokeTarget$SmokeMultiBlockCollectionOwnedEvent",
                 "getBlocks:multi-region-collection");
@@ -391,7 +396,7 @@ public final class SmokeMain {
                 "route=C_REGION_BLOCK",
                 "marker=FBB_SYNTHETIC_MUTATION_PLAN_V1",
                 "operation=read-or-write-unknown",
-                "result=blocked",
+                "result=serialized-unproven",
                 "reason=no-explicit-mutation-intent");
         logs.requireContains("[FBB synthetic-multi-region]",
                 "phase=plan-mutation",
@@ -408,7 +413,7 @@ public final class SmokeMain {
                 "event=smoketest.SmokeTarget$SmokeMutationMultiBlockCollectionOwnedEvent",
                 "route=C_REGION_BLOCK",
                 "marker=FBB_SYNTHETIC_MUTATION_CONTRACT_V1",
-                "result=blocked",
+                "result=contract-missing",
                 "reason=missing-two-phase-contract",
                 "prepare=false",
                 "ownerApply=false",
@@ -438,7 +443,7 @@ public final class SmokeMain {
                 "phase=execute-mutation",
                 "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
                 "route=C_REGION_BLOCK",
-                "result=blocked",
+                "result=contract-rejected",
                 "reason=prepare-returned-false",
                 "marker=FBB_SYNTHETIC_MUTATION_PREPARE_BLOCKED_V1",
                 "prepareHook=prepareMutation",
@@ -447,7 +452,7 @@ public final class SmokeMain {
                 "phase=execute-mutation",
                 "event=smoketest.SmokeTarget$SmokeContractMultiBlockCollectionOwnedEvent",
                 "route=C_REGION_BLOCK",
-                "result=blocked",
+                "result=contract-rejected",
                 "reason=verify-returned-false",
                 "marker=FBB_SYNTHETIC_MUTATION_VERIFY_BLOCKED_V1",
                 "scheduledOwners=2",
@@ -492,6 +497,7 @@ public final class SmokeMain {
                 + " legacyMainThreadEvidence=" + legacyMainThreadEvidence
                 + " mcUtilExecutorEvidence=" + mcUtilExecutorEvidence
                 + " nmsServerExecutorEvidence=" + nmsServerExecutorEvidence
+                + " nmsCompatibilityLaneEvidence=" + nmsCompatibilityLaneEvidence
                 + " compatibilityLaneEvidence=" + compatibilityLaneEvidence
                 + " listenerRouteExitEvidence=" + listenerRouteExitEvidence
                 + " entityOwnedRouteExitEvidence=" + entityOwnedRouteExitEvidence
@@ -795,7 +801,27 @@ public final class SmokeMain {
         requireFragment(evidence, "descriptor=I");
         requireFragment(evidence, "pluginJar=world-editing-plugin-reference.jar");
         requireFragment(evidence, "caller=com.example.serveradapter.NativeWorldAccess#<init>");
-        return "1";
+
+        NullPointerException executorFailure = new NullPointerException(
+                "Cannot read field \"world\" because the return value of "
+                        + "\"io.papermc.paper.threadedregions.TickRegionScheduler.getCurrentRegionizedWorldData()\" is null");
+        executorFailure.setStackTrace(new StackTraceElement[] {
+                new StackTraceElement("net.minecraft.server.level.ServerChunkCache$MainThreadExecutor",
+                        "pollTask", "ServerChunkCache.java", 918),
+                new StackTraceElement("smoketest.ServerExecutorFixture", "run", "ServerExecutorFixture.java", 42)
+        });
+        NmsCompatModel.ExecutorContextReport executorReport = NmsCompatModel
+                .executorContextFromThrowable("MCUtil.MAIN_EXECUTOR#execute",
+                        "smoketest.ServerExecutorFixture#submit(ServerExecutorFixture.java:12)",
+                        executorFailure)
+                .orElseThrow(() -> new IllegalStateException("Expected NMS executor context report"));
+        String executorEvidence = executorReport.toEvidenceLine();
+        requireFragment(executorEvidence, "category=NMS_EXECUTOR_CONTEXT");
+        requireFragment(executorEvidence, "model=SERVER_EXECUTOR_CONTEXT");
+        requireFragment(executorEvidence, "previousRoute=S_GLOBAL");
+        requireFragment(executorEvidence, "result=owner-context-missing");
+        requireFragment(executorEvidence, "next=derive-world-or-chunk-owner-before-promoting-executor-route");
+        return "version=1,executor=1";
     }
 
     private static void requireFragment(String value, String fragment) {
@@ -854,7 +880,7 @@ public final class SmokeMain {
     }
 
     private static void requireBridgeMethodName(String methodName) {
-        Class<?>[] bridgeTypes = { UnsafeCallBridge.class, ServerExecutorBridge.class };
+        Class<?>[] bridgeTypes = { UnsafeCallBridge.class, ServerExecutorBridge.class, ObjectSchedulerBridge.class };
         for (Class<?> bridgeType : bridgeTypes) {
             for (Method method : bridgeType.getDeclaredMethods()) {
                 if (method.getName().equals(methodName)) return;

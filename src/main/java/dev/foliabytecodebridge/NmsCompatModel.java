@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  */
 public final class NmsCompatModel {
 
-    public static final String CATEGORY = "NMS_VERSION_COMPAT";
+    public static final String CATEGORY = NmsCompatFamily.NMS_VERSION_COMPAT.label();
 
     private static final Pattern NO_SUCH_FIELD = Pattern.compile(
             "NoSuchFieldError: Class ([^ ]+) does not have member field '([^']+)'");
@@ -48,6 +48,21 @@ public final class NmsCompatModel {
             if (failure.isEmpty()) continue;
             StackFrame frame = findPluginFrame(cursor.getStackTrace());
             return Optional.of(new Report(failure.get(), frame, cursor.toString()));
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<ExecutorContextReport> executorContextFromThrowable(String sourceApi,
+                                                                               String scheduledFrom,
+                                                                               Throwable throwable) {
+        if (throwable == null) return Optional.empty();
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if (looksLikeMissingRegionizedWorldData(cursor) || hasServerExecutorFrame(cursor.getStackTrace())) {
+                return Optional.of(new ExecutorContextReport(sourceApi, scheduledFrom,
+                        probableServerExecutorOwner(cursor.getStackTrace()), cursor));
+            }
+            cursor = cursor.getCause();
         }
         return Optional.empty();
     }
@@ -96,6 +111,40 @@ public final class NmsCompatModel {
             case "method" -> "inspect-running-server-method-map-before-bytecode-adapter";
             default -> "verify-dependency-or-server-class-before-adapter";
         };
+    }
+
+    private static boolean looksLikeMissingRegionizedWorldData(Throwable throwable) {
+        String text = throwable.toString();
+        return text.contains("getCurrentRegionizedWorldData()")
+                || text.contains("currentRegionizedWorldData");
+    }
+
+    private static boolean hasServerExecutorFrame(StackTraceElement[] stackTrace) {
+        for (StackTraceElement frame : stackTrace) {
+            String className = frame.getClassName();
+            if (className.contains("ServerChunkCache$MainThreadExecutor")
+                    || className.equals("net.minecraft.server.MinecraftServer")
+                    || className.contains("paper.util.MCUtil")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String probableServerExecutorOwner(StackTraceElement[] stackTrace) {
+        for (StackTraceElement frame : stackTrace) {
+            String className = frame.getClassName();
+            if (className.contains("ServerChunkCache$MainThreadExecutor")) {
+                return className + "#" + frame.getMethodName();
+            }
+        }
+        for (StackTraceElement frame : stackTrace) {
+            String className = frame.getClassName();
+            if (className.startsWith("net.minecraft.") || className.startsWith("io.papermc.paper.")) {
+                return className + "#" + frame.getMethodName();
+            }
+        }
+        return "unknown";
     }
 
     private static StackFrame findPluginFrame(List<String> lines, int start) {
@@ -165,6 +214,25 @@ public final class NmsCompatModel {
                     + " action=diagnostic-only"
                     + " reason=" + failure.reason()
                     + " next=" + nextAction(failure);
+        }
+    }
+
+    public record ExecutorContextReport(String sourceApi, String scheduledFrom, String owner,
+                                        Throwable throwable) {
+        public String toEvidenceLine() {
+            return "[FBB nms-compat] category=" + NmsCompatFamily.NMS_EXECUTOR_CONTEXT.label()
+                    + " model=SERVER_EXECUTOR_CONTEXT"
+                    + " api=" + sourceApi
+                    + " owner=" + owner
+                    + " route=none"
+                    + " previousRoute=S_GLOBAL"
+                    + " result=owner-context-missing"
+                    + " action=diagnostic-only"
+                    + " scheduledFrom=" + scheduledFrom
+                    + " throwable=" + throwable.getClass().getName()
+                    + ": " + throwable.getMessage()
+                    + " next=derive-world-or-chunk-owner-before-promoting-executor-route"
+                    + " note=nms-server-internal-executor-context-not-bukkit-route-family";
         }
     }
 }

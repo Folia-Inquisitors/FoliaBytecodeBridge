@@ -25,4 +25,13 @@ public final class FbbProbeControlPlugin extends AbstractFbbProbePlugin {
     protected String defaultFirstJoinModes() {
         return "off";
     }
+
+    @Override
+    protected String defaultStartupModes() {
+        // Keep the raw Folia baseline available, but do not auto-run it during
+        // normal bridge startup tests. Control probes intentionally trigger
+        // Folia guard stack traces, so run them explicitly when comparing
+        // transformed vs untransformed behavior.
+        return "off";
+    }
 }

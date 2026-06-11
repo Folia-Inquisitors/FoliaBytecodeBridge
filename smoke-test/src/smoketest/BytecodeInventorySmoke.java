@@ -57,7 +57,7 @@ final class BytecodeInventorySmoke {
                     "(Lorg/bukkit/Location;)Lorg/bukkit/entity/LightningStrike;"),
             new Probe("world-generateTree", "org/bukkit/World", "generateTree",
                     "(Lorg/bukkit/Location;Lorg/bukkit/TreeType;)Z"),
-            new Probe("shaded-paperlib-teleportAsync-fixture", "com/earth2me/essentials/paperlib/PaperLib", "teleportAsync",
+            new Probe("shaded-paperlib-teleportAsync-fixture", null, "teleportAsync",
                     "(Lorg/bukkit/entity/Entity;Lorg/bukkit/Location;Lorg/bukkit/event/player/PlayerTeleportEvent$TeleportCause;)Ljava/util/concurrent/CompletableFuture;")
     };
 
